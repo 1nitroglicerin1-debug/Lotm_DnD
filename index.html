@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0d0d11" />
+  <title>Повелитель Тайн — Архив Потустороннего</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Courier+Prime:wght@400;700&family=IM+Fell+English:ital@0;1&family=Special+Elite&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --soot: #0d0d11;
+      --smog: #141318;
+      --paper: #1a181e;
+      --paper-2: #201d24;
+      --well: #0f0e12;
+      --ink: #e6dcc6;
+      --ink-dim: #a5997f;
+      --ink-faint: #958a72;
+      --gold: #c29b38;
+      --gold-hi: #e2c26a;
+      --brass: #6b5524;
+      --brass-soft: rgba(194, 155, 56, 0.42);
+      --patina: #4d8676;
+      --patina-hi: #8fbcae;
+      --wax: #a3262a;
+      --wax-hi: #d4675e;
+      --on-gold: #17130a;
+      --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .82 0 0 0 0 .76 0 0 0 0 .6 0 0 0 .06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    .hidden { display: none !important; }
+    button, input, select { font: inherit; color: inherit; }
+    button { cursor: pointer; background: none; border: none; }
+
+    html { background: var(--soot); }
+    body {
+      min-height: 100vh;
+      padding-bottom: calc(112px + env(safe-area-inset-bottom));
+      color: var(--ink);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 17px;
+      line-height: 1.5;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+      background:
+        radial-gradient(1100px 480px at 50% -140px, rgba(194, 155, 56, 0.10), transparent 70%),
+        radial-gradient(900px 640px at -10% 100%, rgba(70, 78, 88, 0.20), transparent 70%),
+        radial-gradient(800px 600px at 110% 55%, rgba(66, 58, 76, 0.18), transparent 70%),
+        linear-gradient(180deg, var(--smog) 0%, var(--soot) 55%);
+      background-attachment: fixed;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background-image: var(--noise);
+    }
+
+    .wrap { position: relative; z-index: 1; width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 14px; }
+
+    /* ---------- Типографика ---------- */
+    .eyebrow {
+      display: block;
+      font-family: 'Courier Prime', monospace;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+    }
+    .title {
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      color: var(--gold-hi);
+      letter-spacing: 0.06em;
+      line-height: 1.2;
+    }
+    .title--xl { font-size: clamp(22px, 4vw, 30px); margin-top: 4px; }
+    .title--md { font-size: 15px; text-transform: uppercase; letter-spacing: 0.12em; margin-top: 3px; }
+    .title--sm { font-size: 12px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--gold); }
+    .italic-note { font-family: 'IM Fell English', Georgia, serif; font-style: italic; color: var(--ink-dim); font-size: 16px; }
+    .mono { font-family: 'Courier Prime', monospace; }
+
+    .fleuron {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 16px 0;
+      color: var(--gold);
+      font-size: 15px;
+      line-height: 1;
+    }
+    .fleuron::before, .fleuron::after {
+      content: "";
+      flex: 1;
+      height: 4px;
+      border-top: 1px solid var(--brass);
+      border-bottom: 1px solid var(--brass);
+    }
+
+    /* ---------- Панель: архивный лист с латунными углами ---------- */
+    .plate {
+      --corner: var(--gold);
+      position: relative;
+      padding: 20px;
+      background-color: var(--paper);
+      background-image: var(--noise);
+      border: 3px double var(--brass-soft);
+      border-radius: 2px;
+    }
+    .plate::after {
+      content: "";
+      position: absolute;
+      inset: -6px;
+      pointer-events: none;
+      background:
+        linear-gradient(var(--corner), var(--corner)) 0 0 / 16px 2px no-repeat,
+        linear-gradient(var(--corner), var(--corner)) 0 0 / 2px 16px no-repeat,
+        linear-gradient(var(--corner), var(--corner)) 100% 0 / 16px 2px no-repeat,
+        linear-gradient(var(--corner), var(--corner)) 100% 0 / 2px 16px no-repeat,
+        linear-gradient(var(--corner), var(--corner)) 0 100% / 16px 2px no-repeat,
+        linear-gradient(var(--corner), var(--corner)) 0 100% / 2px 16px no-repeat,
+        linear-gradient(var(--corner), var(--corner)) 100% 100% / 16px 2px no-repeat,
+        linear-gradient(var(--corner), var(--corner)) 100% 100% / 2px 16px no-repeat;
+    }
+    .plate--deep { background-color: var(--paper-2); }
+    .plate--blood { --corner: var(--wax); border-color: rgba(163, 38, 42, 0.7); }
+    .plate--tight { padding: 14px 16px; }
+    .plate-head { padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--brass); }
+
+    /* ---------- Кнопки ---------- */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 18px;
+      border: 1px solid var(--gold);
+      border-radius: 2px;
+      color: var(--gold-hi);
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      text-decoration: none;
+      transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .btn:hover { background: var(--gold); color: var(--on-gold); }
+    .btn:active { transform: translateY(1px); }
+    .btn--primary { width: 100%; padding: 15px 18px; border: 3px double var(--gold); }
+    .btn--block { width: 100%; }
+    .btn--sm { padding: 7px 12px; font-size: 11px; }
+    .btn--blood { border-color: #8e2a26; color: var(--wax-hi); }
+    .btn--blood:hover { background: #8e2a26; color: #f3e6d6; }
+    .btn--patina { border-color: var(--patina); color: var(--patina-hi); }
+    .btn--patina:hover { background: var(--patina); color: var(--soot); }
+    .btn:focus-visible, .choice:focus-visible, .tactic:focus-visible, .intent:focus-visible, .tab:focus-visible {
+      outline: 2px solid var(--gold-hi);
+      outline-offset: 2px;
+    }
+
+    /* ---------- HUD: латунные регистры и ртутные шкалы ---------- */
+    .hud {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      padding: 10px 0 12px;
+      background: #0f0e13;
+      border-bottom: 3px double var(--brass);
+    }
+    .hud-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+    .hud-id { min-width: 0; }
+    #hud-name {
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--gold-hi);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #hud-sub { font-family: 'Courier Prime', monospace; font-size: 12px; color: var(--ink-dim); }
+
+    .registers { display: flex; gap: 6px; flex-shrink: 0; }
+    .register {
+      min-width: 70px;
+      padding: 3px 8px 4px;
+      text-align: center;
+      background: var(--well);
+      border: 1px solid var(--brass);
+      border-radius: 2px;
+    }
+    .reg-label {
+      display: block;
+      font-family: 'Cinzel', serif;
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+    }
+    .reg-val { font-family: 'Courier Prime', monospace; font-weight: 700; font-size: 16px; line-height: 1.15; color: var(--gold-hi); }
+
+    .gauges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 10px; }
+    .gauge-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+    .gauge-name { font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); }
+    .gauge-val { font-family: 'Courier Prime', monospace; font-weight: 700; font-size: 12px; color: var(--ink); }
+    .gauge.is-low .gauge-val { color: var(--wax-hi); }
+    .tube {
+      position: relative;
+      height: 10px;
+      margin-top: 4px;
+      padding: 1px;
+      background: #08080a;
+      border: 1px solid var(--brass);
+    }
+    .tube::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(194, 155, 56, 0.2) calc(10% - 1px) 10%);
+    }
+    .tube-fill { height: 100%; width: 0; transition: width 0.5s ease; }
+    .tube-fill--hp { background: linear-gradient(180deg, #a83b33, #6a1c19); }
+    .tube-fill--san { background: linear-gradient(180deg, #78ab9c, #3b6a5d); }
+    .tube-fill--dig { background: linear-gradient(180deg, #dab655, #86661f); }
+
+    /* ---------- Основная раскладка ---------- */
+    main.wrap { padding-top: 22px; }
+    .stack > * + * { margin-top: 18px; }
+
+    .builder { max-width: 720px; margin: 0 auto 22px; }
+    .field + .field, .field-row { margin-top: 16px; }
+    .field-row { display: grid; gap: 16px; }
+    .field label {
+      display: block;
+      margin-bottom: 6px;
+      font-family: 'Cinzel', serif;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .input {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--well);
+      border: 1px solid var(--brass);
+      border-radius: 2px;
+      color: var(--ink);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 18px;
+      outline: none;
+      user-select: text;
+    }
+    .input::placeholder { color: var(--ink-faint); font-style: italic; }
+    .input:focus { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+    select.input {
+      appearance: none;
+      -webkit-appearance: none;
+      padding-right: 34px;
+      background-image:
+        linear-gradient(45deg, transparent 50%, var(--gold) 50%),
+        linear-gradient(135deg, var(--gold) 50%, transparent 50%);
+      background-position: calc(100% - 18px) 55%, calc(100% - 13px) 55%;
+      background-size: 5px 5px;
+      background-repeat: no-repeat;
+    }
+    option { background: var(--smog); color: var(--ink); }
+    .hint { margin-top: 6px; }
+
+    /* ---------- Вкладка сюжета ---------- */
+    .case-grid { display: grid; gap: 18px; }
+    .case-side > * + *, .case-main > * + * { margin-top: 18px; }
+
+    #story-loc { font-family: 'Cinzel', serif; font-weight: 700; font-size: 14px; letter-spacing: 0.1em; color: var(--gold-hi); margin-top: 4px; }
+    #story-arc { margin-top: 2px; }
+    .case-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+
+    .dice-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    #dice-skill { font-family: 'Cinzel', serif; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); }
+    .dice-body { display: flex; gap: 14px; align-items: center; margin-top: 12px; }
+    .die {
+      flex-shrink: 0;
+      width: 64px;
+      padding: 6px 0 4px;
+      text-align: center;
+      background: var(--well);
+      border: 3px double var(--brass-soft);
+    }
+    .die-label { display: block; font-family: 'Courier Prime', monospace; font-size: 10px; letter-spacing: 0.16em; color: var(--ink-faint); }
+    #dice-nat { font-family: 'Special Elite', 'Courier Prime', monospace; font-size: 30px; line-height: 1.1; color: var(--gold-hi); }
+    #dice-detail { font-size: 17px; line-height: 1.4; color: var(--ink); }
+    #btn-reroll { margin-top: 14px; }
+
+    .stamp {
+      flex-shrink: 0;
+      padding: 3px 10px 2px;
+      font-family: 'Special Elite', 'Courier Prime', monospace;
+      font-size: 14px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      border: 2px solid currentColor;
+      outline: 1px solid currentColor;
+      outline-offset: 2px;
+      transform: rotate(-4deg);
+      opacity: 0.92;
+    }
+    .stamp--ok { color: var(--patina-hi); }
+    .stamp--fail { color: #c9433a; }
+
+    .enemy-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid rgba(163, 38, 42, 0.5); }
+    #enemy-name { font-family: 'Cinzel', serif; font-weight: 700; font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--wax-hi); }
+    #enemy-desc { margin-top: 2px; font-size: 15px; }
+    #enemy-hp { flex-shrink: 0; padding: 3px 8px; font-family: 'Courier Prime', monospace; font-weight: 700; font-size: 13px; color: var(--wax-hi); border: 1px solid var(--wax); background: #1a0c0d; }
+    .tactics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tactic {
+      display: block;
+      width: 100%;
+      padding: 10px 12px;
+      text-align: left;
+      background: var(--well);
+      border: 1px solid var(--brass);
+      border-radius: 2px;
+      transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .tactic-name { display: block; font-family: 'Cinzel', serif; font-weight: 700; font-size: 12px; letter-spacing: 0.06em; color: var(--gold-hi); }
+    .tactic-note { display: block; margin-top: 2px; font-family: 'Courier Prime', monospace; font-size: 11px; color: var(--ink-faint); }
+    .tactic:hover { background: var(--gold); border-color: var(--gold); }
+    .tactic:hover .tactic-name, .tactic:hover .tactic-note { color: var(--on-gold); }
+    .tactic:hover .tactic-name { text-decoration: underline; text-underline-offset: 3px; }
+
+    .narrative { padding: 26px 22px; min-height: 320px; }
+    #story-text {
+      font-size: 19px;
+      line-height: 1.62;
+      color: #ebe2cd;
+      white-space: pre-line;
+      user-select: text;
+    }
+    #story-text.is-muted { font-style: italic; color: #b3a88f; }
+    #story-text:not(.is-muted)::first-letter {
+      float: left;
+      padding: 6px 10px 0 0;
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 3.2em;
+      line-height: 0.85;
+      color: var(--gold-hi);
+    }
+
+    .choices { display: flex; flex-direction: column; gap: 8px; }
+    .choice {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      width: 100%;
+      text-align: left;
+      background: var(--paper);
+      border: 1px solid var(--brass);
+      border-radius: 2px;
+      transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .choice-num {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 18px;
+      color: var(--gold);
+      border-right: 3px double var(--brass);
+    }
+    .choice-body { padding: 12px 14px; }
+    .choice-text { display: block; font-size: 18px; line-height: 1.4; color: var(--ink); }
+    .choice-meta { display: block; margin-top: 6px; font-family: 'Courier Prime', monospace; font-size: 12px; letter-spacing: 0.03em; color: var(--ink-dim); }
+    .choice:hover { background: var(--gold); border-color: var(--gold); }
+    .choice:hover .choice-num { color: var(--on-gold); border-right-color: rgba(23, 19, 10, 0.45); }
+    .choice:hover .choice-text { color: var(--on-gold); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+    .choice:hover .choice-meta { color: #3d3115; }
+    .choice:active { transform: translateY(1px); }
+
+    .intents { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 10px; border: 1px solid var(--brass); border-radius: 2px; }
+    .intent {
+      padding: 8px 4px;
+      font-family: 'Cinzel', serif;
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      transition: background-color 0.12s, color 0.12s;
+    }
+    .intent + .intent { border-left: 1px solid var(--brass); }
+    .intent:hover { color: var(--gold-hi); }
+    .intent.is-active { background: var(--gold); color: var(--on-gold); }
+    .free-row { display: flex; gap: 8px; margin-top: 10px; }
+    .free-row .input { flex: 1; min-width: 0; }
+
+    /* ---------- Лист героя ---------- */
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .stat { padding: 10px 6px 8px; text-align: center; background: var(--well); border: 1px solid var(--brass); }
+    .stat-k { display: block; font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); }
+    .stat-v { display: block; font-family: 'Courier Prime', monospace; font-weight: 700; font-size: 22px; line-height: 1.2; color: var(--gold-hi); }
+    .stat-m { display: block; font-family: 'Courier Prime', monospace; font-size: 12px; color: var(--ink-dim); }
+    .ability { padding: 8px 0 8px 12px; border-left: 2px solid var(--gold); font-size: 17px; line-height: 1.45; }
+    .ability + .ability { margin-top: 8px; }
+    .ability b { font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 0.04em; color: var(--gold-hi); }
+    .ability span { color: var(--ink-dim); }
+    .skills { display: grid; grid-template-columns: 1fr; gap: 2px 24px; }
+    .skill { display: flex; align-items: baseline; gap: 6px; padding: 3px 0; font-size: 17px; }
+    .skill-mark { width: 14px; font-family: 'Courier Prime', monospace; color: var(--gold); }
+    .skill-leader { flex: 1; border-bottom: 1px dotted var(--brass); transform: translateY(-4px); }
+    .skill-val { font-family: 'Courier Prime', monospace; font-weight: 700; color: var(--gold-hi); }
+    .text-link { font-family: 'Cormorant Garamond', serif; font-size: 15px; color: var(--ink-dim); text-decoration: underline; text-underline-offset: 3px; }
+    .text-link:hover { color: var(--gold-hi); }
+
+    /* ---------- Дело (дневник) ---------- */
+    .journal-grid { display: grid; gap: 20px; }
+    .journal-block h3 { margin-bottom: 8px; }
+    #j-principle { font-family: 'IM Fell English', Georgia, serif; font-style: italic; font-size: 19px; line-height: 1.55; color: var(--ink); }
+    .ledger-list { list-style: none; font-size: 17px; }
+    .ledger-list li { position: relative; padding: 4px 0 4px 20px; border-bottom: 1px dotted rgba(107, 85, 36, 0.6); }
+    .ledger-list li::before { content: "✶"; position: absolute; left: 0; top: 5px; font-size: 12px; color: var(--gold); }
+    #j-summary { font-size: 17px; line-height: 1.6; color: var(--ink-dim); user-select: text; }
+
+    /* ---------- Святилище (прейскурант) ---------- */
+    .offer { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px dotted var(--brass); }
+    .offer:first-child { padding-top: 0; }
+    .offer-name { font-family: 'Cinzel', serif; font-weight: 700; font-size: 14px; letter-spacing: 0.06em; color: var(--gold-hi); }
+    .offer-desc { font-size: 16px; color: var(--ink-dim); }
+    .offer .btn { flex-shrink: 0; min-width: 96px; font-family: 'Courier Prime', monospace; letter-spacing: 0.06em; font-size: 13px; }
+    .offer--vip .offer-name { color: var(--wax-hi); }
+    .offer--vip .btn { border: 3px double var(--wax); color: var(--wax-hi); }
+    .offer--vip .btn:hover { background: var(--wax); color: #f3e6d6; }
+    #tribute-btn { margin-top: 18px; }
+
+    /* ---------- Нижняя навигация ---------- */
+    .tabbar {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      z-index: 40;
+      padding-bottom: env(safe-area-inset-bottom);
+      background: #0f0e13;
+      border-top: 3px double var(--brass);
+    }
+    .tabbar .wrap { display: grid; grid-template-columns: repeat(4, 1fr); }
+    .tab {
+      padding: 13px 4px 14px;
+      font-family: 'Cinzel', serif;
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      border-top: 2px solid transparent;
+      transition: color 0.12s, border-color 0.12s;
+    }
+    .tab:hover { color: var(--ink); }
+    .tab.is-active { color: var(--gold-hi); border-top-color: var(--gold); }
+
+    /* ---------- Десктоп: стол детектива ---------- */
+    @media (min-width: 700px) {
+      .field-row { grid-template-columns: 1fr 1fr; }
+      .stats { grid-template-columns: repeat(6, 1fr); }
+      .skills { grid-template-columns: 1fr 1fr; }
+      .journal-grid { grid-template-columns: 1fr 1fr; }
+      .journal-block--wide { grid-column: 1 / -1; }
+      #hud-name { font-size: 16px; }
+    }
+    @media (min-width: 960px) {
+      body { font-size: 18px; }
+      .wrap { padding: 0 28px; }
+      .case-grid { grid-template-columns: minmax(0, 1fr) 330px; gap: 26px; align-items: start; }
+      .case-side { grid-column: 2; grid-row: 1; position: sticky; top: 132px; }
+      .case-main { grid-column: 1; grid-row: 1; }
+      .narrative { padding: 36px 40px; min-height: 460px; }
+      #story-text { font-size: 21px; }
+      .choice-text { font-size: 19px; }
+      .sheet-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 26px; align-items: start; }
+      .sheet-grid > * + * { margin-top: 0; }
+      .shop-plate { max-width: 760px; margin: 0 auto; }
+    }
+    @media (max-width: 420px) {
+      .register { min-width: 58px; padding: 3px 6px; }
+      .gauges { gap: 8px; }
+      .gauge-name { font-size: 9px; letter-spacing: 0.08em; }
+      .plate { padding: 16px; }
+      .narrative { padding: 20px 16px; }
+      .choice { grid-template-columns: 44px 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HUD: регистры и шкалы -->
+  <header class="hud">
+    <div class="wrap">
+      <div class="hud-row">
+        <div class="hud-id">
+          <div id="hud-name">Врата Серого Тумана</div>
+          <div id="hud-sub">Последовательность 9</div>
+        </div>
+        <div class="registers">
+          <div class="register" title="Духовность: оставшиеся ходы">
+            <span class="reg-label">Дух</span>
+            <span id="hud-turns" class="reg-val">0</span>
+          </div>
+          <div class="register" title="Печати Судьбы: перебросы">
+            <span class="reg-label">Печати</span>
+            <span id="hud-fate" class="reg-val">0</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="hud-bars" class="gauges">
+        <div class="gauge" id="g-hp">
+          <div class="gauge-head"><span class="gauge-name">Здоровье</span><span id="bar-hp-txt" class="gauge-val">0/0</span></div>
+          <div class="tube"><div id="bar-hp-fill" class="tube-fill tube-fill--hp"></div></div>
+        </div>
+        <div class="gauge" id="g-san">
+          <div class="gauge-head"><span class="gauge-name">Рассудок</span><span id="bar-san-txt" class="gauge-val">100%</span></div>
+          <div class="tube"><div id="bar-san-fill" class="tube-fill tube-fill--san"></div></div>
+        </div>
+        <div class="gauge" id="g-dig">
+          <div class="gauge-head"><span class="gauge-name">Зелье</span><span id="bar-dig-txt" class="gauge-val">0%</span></div>
+          <div class="tube"><div id="bar-dig-fill" class="tube-fill tube-fill--dig"></div></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- Создание персонажа -->
+    <section id="view-builder" class="hidden builder plate plate--deep">
+      <div class="plate-head" style="text-align:center">
+        <span class="eyebrow">Архив Тингена · 1349 год</span>
+        <h1 class="title title--xl">Ритуал Прикосновения</h1>
+      </div>
+
+      <div class="field">
+        <label for="b-name">Имя Потустороннего</label>
+        <input id="b-name" type="text" class="input" placeholder="Например: Артур Моретти" />
+      </div>
+
+      <div class="field">
+        <label for="b-pathway">Путь возвышения</label>
+        <select id="b-pathway" class="input"></select>
+        <div id="b-pathway-info" class="hint italic-note"></div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="b-bg">Предыстория</label>
+          <select id="b-bg" class="input"></select>
+        </div>
+        <div class="field">
+          <label for="b-region">Стартовый регион</label>
+          <select id="b-region" class="input"></select>
+        </div>
+      </div>
+
+      <div class="fleuron">❦</div>
+      <button onclick="submitQuickBuild()" class="btn btn--primary">Принять зелье и шагнуть в мир</button>
+    </section>
+
+    <!-- Сюжет -->
+    <section id="tab-story" class="case-grid">
+
+      <aside class="case-side">
+        <div class="plate plate--tight">
+          <span class="eyebrow">Материалы дела</span>
+          <div id="story-loc">Тинген, улица Железного Креста</div>
+          <div id="story-arc" class="italic-note">Дело ещё не открыто</div>
+          <div class="case-actions">
+            <button onclick="combatAction('start_hunt')" class="btn btn--sm btn--blood">Охота</button>
+            <button onclick="combatAction('rest')" class="btn btn--sm btn--patina">Отдых</button>
+          </div>
+        </div>
+
+        <div id="dice-banner" class="hidden plate plate--tight">
+          <div class="dice-top">
+            <span id="dice-skill">Проверка навыка</span>
+            <span id="dice-badge" class="stamp stamp--ok">Успех</span>
+          </div>
+          <div class="dice-body">
+            <div class="die"><span class="die-label">D20</span><div id="dice-nat">–</div></div>
+            <div id="dice-detail"></div>
+          </div>
+          <button id="btn-reroll" onclick="doStoryTurn(null, true)" class="hidden btn btn--sm btn--block">Натянуть нити судьбы: переброс 2d20</button>
+        </div>
+
+        <div id="combat-box" class="hidden plate plate--blood plate--tight">
+          <div class="enemy-head">
+            <div>
+              <span class="eyebrow">Противник</span>
+              <div id="enemy-name">Враг</div>
+              <div id="enemy-desc" class="italic-note"></div>
+            </div>
+            <div id="enemy-hp">ОЗ 0/0</div>
+          </div>
+          <div class="tactics">
+            <button onclick="combatAction('cantrip')" class="tactic"><span class="tactic-name">I. Заговор Пути</span><span class="tactic-note">Бесплатный выпад</span></button>
+            <button onclick="combatAction('mech')" class="tactic"><span class="tactic-name">II. Механика Пути</span><span class="tactic-note">Особый приём</span></button>
+            <button onclick="combatAction('myth')" class="tactic"><span class="tactic-name">III. Мифическая форма</span><span class="tactic-note">Посл. 4–0 · −20 рассудка</span></button>
+            <button onclick="combatAction('flee')" class="tactic"><span class="tactic-name">IV. Отступить</span><span class="tactic-note">Скрыться в тумане</span></button>
+          </div>
+        </div>
+      </aside>
+
+      <div class="case-main">
+        <article class="plate plate--deep narrative">
+          <div id="story-text" class="is-muted">Шагни в туман, чтобы открыть первую главу расследования.</div>
+        </article>
+
+        <div id="story-options" class="choices">
+          <button onclick="doStoryTurn(null, false)" class="btn btn--primary">Шагнуть в туман</button>
+        </div>
+
+        <div class="plate plate--tight">
+          <span class="eyebrow">Свободный ход</span>
+          <div class="intents">
+            <button onclick="setIntent('act')" id="int-act" class="intent is-active">Действие</button>
+            <button onclick="setIntent('talk')" id="int-talk" class="intent">Реплика</button>
+            <button onclick="setIntent('inspect')" id="int-inspect" class="intent">Осмотр</button>
+            <button onclick="setIntent('skill')" id="int-skill" class="intent">Магия</button>
+          </div>
+          <div class="free-row">
+            <input id="free-input" type="text" class="input" placeholder="Опиши действие, фразу или безумный ход" onkeydown="if(event.key==='Enter') sendFreeText()" />
+            <button onclick="sendFreeText()" class="btn">Ход</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Лист героя -->
+    <section id="tab-sheet" class="hidden">
+      <div class="plate">
+        <div class="plate-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px">
+          <div>
+            <span class="eyebrow">Личное дело</span>
+            <h2 class="title title--md">Карточка Потустороннего</h2>
+          </div>
+          <button onclick="document.getElementById('view-builder').classList.toggle('hidden')" class="text-link">Пересоздать</button>
+        </div>
+        <div class="sheet-grid stack">
+          <div class="stack">
+            <div id="sheet-stats" class="stats"></div>
+            <div id="sheet-abilities"></div>
+          </div>
+          <div>
+            <h3 class="title title--sm" style="margin-bottom:8px">Навыки</h3>
+            <div id="sheet-skills" class="skills"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Дело -->
+    <section id="tab-journal" class="hidden">
+      <div class="plate plate--deep">
+        <div class="plate-head">
+          <span class="eyebrow">Записная книжка</span>
+          <h2 class="title title--md">Материалы расследования</h2>
+        </div>
+        <div class="journal-grid">
+          <div class="journal-block journal-block--wide">
+            <h3 class="title title--sm">Заповедь метода отыгрыша</h3>
+            <p id="j-principle"></p>
+          </div>
+          <div class="journal-block">
+            <h3 class="title title--sm">Улики, капитал и артефакты</h3>
+            <ul id="j-clues" class="ledger-list"></ul>
+          </div>
+          <div class="journal-block">
+            <h3 class="title title--sm">Встреченные персоны</h3>
+            <ul id="j-npcs" class="ledger-list"></ul>
+          </div>
+          <div class="journal-block journal-block--wide">
+            <div class="fleuron">❦</div>
+            <h3 class="title title--sm">Хроника расследования</h3>
+            <p id="j-summary"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Святилище -->
+    <section id="tab-shop" class="hidden">
+      <div class="plate shop-plate">
+        <div class="plate-head" style="text-align:center">
+          <span class="eyebrow">Прейскурант</span>
+          <h2 class="title title--md">Святилище Серого Тумана</h2>
+          <p class="italic-note" style="margin-top:6px">Духовность и Печати Судьбы за Telegram Stars или банковской картой.</p>
+        </div>
+        <div class="offer">
+          <div>
+            <div class="offer-name">Искра Духовности</div>
+            <div class="offer-desc">+35 ходов Мастера и 1 Печать Судьбы</div>
+          </div>
+          <button onclick="buyStarsPack('spark')" class="btn btn--sm">50 ★</button>
+        </div>
+        <div class="offer">
+          <div>
+            <div class="offer-name">Сосуд Потустороннего</div>
+            <div class="offer-desc">+120 ходов Мастера и 3 Печати Судьбы</div>
+          </div>
+          <button onclick="buyStarsPack('vessel')" class="btn btn--sm">150 ★</button>
+        </div>
+        <div class="offer offer--vip">
+          <div>
+            <div class="offer-name">«Повелитель Тумана» · 30 дней</div>
+            <div class="offer-desc">До 35 ходов ежедневно и расширенная память</div>
+          </div>
+          <button onclick="buyStarsPack('vip')" class="btn btn--sm">300 ★</button>
+        </div>
+        <a id="tribute-btn" href="#" target="_blank" rel="noopener" class="hidden btn btn--block">Оплатить международной картой (Tribute)</a>
+      </div>
+    </section>
+
+  </main>
+
+  <nav class="tabbar">
+    <div class="wrap">
+      <button onclick="switchTab('story')" id="nav-story" class="tab is-active">Сюжет</button>
+      <button onclick="switchTab('sheet')" id="nav-sheet" class="tab">Герой</button>
+      <button onclick="switchTab('journal')" id="nav-journal" class="tab">Дело</button>
+      <button onclick="switchTab('shop')" id="nav-shop" class="tab">Святилище</button>
+    </div>
+  </nav>
+
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    if (tg) { tg.ready(); tg.expand(); }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const USER_ID = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id)
+      ? tg.initDataUnsafe.user.id
+      : parseInt(urlParams.get("uid") || localStorage.getItem("lotm_uid") || "664506059", 10);
+    localStorage.setItem("lotm_uid", USER_ID);
+
+    let META = null;
+    let STATE = null;
+    let CURRENT_INTENT = "act";
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const strip = (s) => String(s ?? "").replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, "").replace(/\s+/g, " ").trim();
+    const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
+    const pct = (a, b) => (b > 0 ? Math.max(0, Math.min(100, (a / b) * 100)) : 0);
+    const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+    const roman = (i) => ROMAN[i] || String(i + 1);
+
+    function setGauge(key, percent, text) {
+      $(`bar-${key}-txt`).textContent = text;
+      $(`bar-${key}-fill`).style.width = `${percent}%`;
+      $(`g-${key}`).classList.toggle("is-low", key !== "dig" && percent <= 30);
+    }
+
+    function switchTab(tab) {
+      ["story", "sheet", "journal", "shop"].forEach((t) => {
+        $("tab-" + t).classList.toggle("hidden", t !== tab);
+        $("nav-" + t).classList.toggle("is-active", t === tab);
+      });
+      window.scrollTo({ top: 0 });
+    }
+
+    function setIntent(intent) {
+      CURRENT_INTENT = intent;
+      ["act", "talk", "inspect", "skill"].forEach((k) => {
+        const el = $("int-" + k);
+        if (el) el.classList.toggle("is-active", k === intent);
+      });
+    }
+
+    async function initApp() {
+      const mRes = await fetch("/api/meta");
+      META = await mRes.json();
+      populateBuilderSelects();
+      if (META.tribute_link) {
+        const tBtn = $("tribute-btn");
+        tBtn.href = META.tribute_link;
+        tBtn.classList.remove("hidden");
+      }
+      await loadState();
+    }
+
+    function populateBuilderSelects() {
+      const pSel = $("b-pathway");
+      pSel.innerHTML = META.pathways.map((p) => `<option value="${esc(p.key)}">${esc(strip(p.name))} — Посл. 9 «${esc(strip(p.seq9_title))}»</option>`).join("");
+      pSel.onchange = () => {
+        const p = META.pathways.find((x) => x.key === pSel.value);
+        if (p) $("b-pathway-info").textContent = `${strip(p.core_9.name)}: ${p.core_9.desc}`;
+      };
+      pSel.onchange();
+
+      const bgList = META.backgrounds && META.backgrounds.length ? META.backgrounds : [{ key: "detective", name: "Частный сыщик" }];
+      $("b-bg").innerHTML = bgList.map((b) => `<option value="${esc(b.key)}">${esc(strip(b.name))}</option>`).join("");
+
+      const regList = META.regions && META.regions.length ? META.regions : [{ key: "tingen", name: "Тинген" }];
+      $("b-region").innerHTML = regList.map((r) => `<option value="${esc(r.key)}">${esc(strip(r.name))}</option>`).join("");
+    }
+
+    async function loadState() {
+      const res = await fetch(`/api/state/${USER_ID}`);
+      STATE = await res.json();
+      renderState();
+    }
+
+    function renderState() {
+      if (!STATE.has_character) {
+        $("view-builder").classList.remove("hidden");
+        $("hud-name").textContent = "Создай Потустороннего";
+        return;
+      }
+      $("view-builder").classList.add("hidden");
+      const c = STATE.character;
+      const s = STATE.session;
+
+      $("hud-name").textContent = `${c.name} · ${strip(c.pathway_name)}`;
+      $("hud-sub").textContent = `Посл. ${c.sequence} «${strip(c.seq_title)}» · КД ${c.effective_ac}`;
+      $("hud-turns").textContent = s.turns_left;
+      $("hud-fate").textContent = s.fate_tokens;
+      setGauge("hp", pct(c.hp, c.max_hp), `${c.hp}/${c.max_hp}`);
+      setGauge("san", pct(c.sanity, 100), `${c.sanity}%`);
+      setGauge("dig", pct(c.digestion, 100), `${c.digestion}%`);
+
+      $("story-loc").textContent = strip(s.location);
+      $("story-arc").textContent = s.current_arc || "Новое расследование в тумане";
+      if (s.last_narrative) { $("story-text").textContent = s.last_narrative; $("story-text").classList.remove("is-muted"); }
+
+      const enemy = s.enemy || {};
+      const inCombat = enemy.hp && enemy.hp > 0;
+      $("combat-box").classList.toggle("hidden", !inCombat);
+      if (inCombat) {
+        $("enemy-name").textContent = `${strip(enemy.name)} · Посл. ${enemy.seq || 9}`;
+        $("enemy-desc").textContent = enemy.desc || "";
+        $("enemy-hp").textContent = `ОЗ ${enemy.hp}/${enemy.max_hp}`;
+      }
+
+      const optBox = $("story-options");
+      if (inCombat) {
+        optBox.innerHTML = "";
+      } else if (!s.enriched_options || !s.enriched_options.length) {
+        optBox.innerHTML = `<button onclick="doStoryTurn(null, false)" class="btn btn--primary">Шагнуть в туман</button>`;
+      } else {
+        optBox.innerHTML = s.enriched_options.map((o, idx) => {
+          const skill = strip(o.skill_name).split(" ")[0];
+          return `<button onclick="doStoryTurn(${Number(o.id)}, false)" class="choice">
+            <span class="choice-num">${roman(idx)}</span>
+            <span class="choice-body">
+              <span class="choice-text">${esc(o.text)}</span>
+              <span class="choice-meta">${esc(skill)} ${signed(o.player_bonus)} · Сл ${esc(o.dc)}</span>
+            </span>
+          </button>`;
+        }).join("");
+      }
+
+      $("sheet-stats").innerHTML = Object.entries(c.stats).map(([k, v]) => {
+        const mod = Math.floor((v - 10) / 2);
+        return `<div class="stat"><span class="stat-k">${esc(k)}</span><span class="stat-v">${esc(v)}</span><span class="stat-m">${signed(mod)}</span></div>`;
+      }).join("");
+
+      $("sheet-abilities").innerHTML = `<h3 class="title title--sm" style="margin-bottom:10px">Открытые способности Пути</h3>` +
+        c.abilities.map((a) => `<div class="ability"><b>Посл. ${esc(a.seq)} · ${esc(strip(a.name))}</b> — <span>${esc(a.desc)}</span></div>`).join("");
+
+      $("sheet-skills").innerHTML = Object.values(c.skill_bonuses).map((sk) => {
+        const mark = sk.mult >= 2 ? "★" : (sk.mult === 1 ? "✓" : "·");
+        return `<div class="skill"><span class="skill-mark">${mark}</span><span>${esc(strip(sk.name))}</span><span class="skill-leader"></span><span class="skill-val">${signed(sk.total)}</span></div>`;
+      }).join("");
+
+      $("j-principle").textContent = c.acting_principle;
+      $("j-clues").innerHTML = (s.clues && s.clues.length) ? s.clues.map((x) => `<li>${esc(x)}</li>`).join("") : "<li>Улик пока нет</li>";
+      $("j-npcs").innerHTML = (s.npcs && s.npcs.length) ? s.npcs.map((x) => `<li>${esc(x)}</li>`).join("") : "<li>Персоны пока не встречены</li>";
+      $("j-summary").textContent = s.summary || "Хроника только открыта.";
+    }
+
+    async function submitQuickBuild() {
+      const payload = {
+        user_id: USER_ID,
+        name: $("b-name").value || "Клейн",
+        pathway: $("b-pathway").value,
+        background: $("b-bg").value,
+        region: $("b-region").value,
+        branch_9: "a"
+      };
+      const res = await fetch("/api/build_quick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      STATE = await res.json();
+      renderState();
+    }
+
+    async function doStoryTurn(optionId, isReroll, freeText = null) {
+      $("story-text").textContent = "Серый туман сгущается, кости судьбы брошены..."; $("story-text").classList.add("is-muted");
+      const res = await fetch("/api/story/turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: USER_ID,
+          option_id: optionId,
+          free_text: freeText,
+          intent: CURRENT_INTENT,
+          reroll: isReroll
+        })
+      });
+      if (res.status === 402) {
+        switchTab("shop");
+        return;
+      }
+      const data = await res.json();
+      STATE = data.state;
+      renderState();
+      if (data.roll) {
+        const r = data.roll;
+        $("dice-banner").classList.remove("hidden");
+        $("dice-skill").textContent = `${strip(r.skill_name)} · Сл ${r.dc}`;
+        const badge = $("dice-badge");
+        badge.textContent = r.success ? "Успех" : "Провал";
+        badge.className = r.success ? "stamp stamp--ok" : "stamp stamp--fail";
+        $("dice-nat").textContent = r.natural;
+        $("dice-detail").textContent = `«${r.action_text}». Итог: ${r.total}`;
+        $("btn-reroll").classList.toggle("hidden", r.success || STATE.session.fate_tokens <= 0);
+      }
+    }
+
+    async function sendFreeText() {
+      const inp = $("free-input");
+      const txt = inp.value.trim();
+      if (!txt) return;
+      inp.value = "";
+      const enemy = (STATE && STATE.session && STATE.session.enemy) || {};
+      if (enemy.hp && enemy.hp > 0) {
+        await combatAction("stunt", txt);
+      } else {
+        await doStoryTurn(null, false, txt);
+      }
+    }
+
+    async function combatAction(kind, stuntText = null) {
+      const res = await fetch("/api/combat/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: USER_ID, kind: kind, stunt_text: stuntText })
+      });
+      const data = await res.json();
+      STATE = data.state;
+      renderState();
+      if (data.log && data.log.length) {
+        $("story-text").textContent = data.log.join("\n\n"); $("story-text").classList.remove("is-muted");
+      }
+    }
+
+    async function buyStarsPack(packId) {
+      const res = await fetch("/api/shop/invoice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: USER_ID, pack_id: packId })
+      });
+      if (!res.ok) {
+        alert("Используй команду /shop в Telegram для прямой оплаты!");
+        return;
+      }
+      const data = await res.json();
+      if (tg && tg.openInvoice) {
+        tg.openInvoice(data.invoice_link, async (status) => {
+          if (status === "paid") await loadState();
+        });
+      } else {
+        window.open(data.invoice_link, "_blank");
+      }
+    }
+
+    initApp().catch((err) => {
+      console.error(err);
+      $("story-text").textContent = "Связь с Архивом прервана. Обнови страницу через минуту."; $("story-text").classList.add("is-muted");
+    });
+  </script>
+</body>
+</html>
