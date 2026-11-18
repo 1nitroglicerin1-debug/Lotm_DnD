@@ -6,6 +6,9 @@ data/
 *.log
 .DS_Store
 
+# Секреты сервера — НИКОГДА в git/архивы
+VPS_ROOT.txt
+
 # Дампы для внешнего ревью и локальные бэкапы
 PROJECT_REVIEW_*
 1_CORE_AND_DATA.txt
