@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import combat_engine as combat
 import config
 import db
 import h_perks
@@ -820,7 +821,7 @@ async def api_story_turn(req: ActionPayload):
 
 @app.post("/api/combat/action")
 async def api_combat_action(req: CombatPayload):
-    """Бесплатный пошаговый бой и охота 1-на-1 на чистом движке rules.py."""
+    """Пошаговый бой 1-на-1 на общем движке combat_engine — идентичен Telegram-боям."""
     uid = req.user_id
     c = await db.get_character(uid)
     session = await db.get_story_session(uid)
@@ -836,7 +837,10 @@ async def api_combat_action(req: CombatPayload):
         restored = rules.long_rest(c)
         uses = h_perks.reset_combat_uses(c)
         await db.update_character(uid, sanity=100, lair_uses=uses, **restored)
-        return {"log": ["🧘 Когитация завершена: ОЗ, Рассудок и Духовность полностью восстановлены!"], "state": await api_get_state(uid)}
+        return {
+            "log": ["🧘 Когитация завершена: ОЗ, Рассудок и Духовность полностью восстановлены!"],
+            "state": await api_get_state(uid),
+        }
 
     if req.kind == "flee":
         await db.update_story_session(uid, enemy={})
@@ -846,93 +850,25 @@ async def api_combat_action(req: CombatPayload):
     if not enemy or int(enemy.get("hp", 0)) <= 0:
         raise HTTPException(400, "No active enemy")
 
-    log_lines: list[str] = []
-    _, stat_mod = rules.best_path_stat(c)
-    prof = rules.effective_prof_bonus(c)
-    choices = {int(k): v for k, v in (c.get("pathway_choices") or {}).items()}
-    skills = rules.path_skills(c["pathway"], choices, c["sequence"], c["start_sequence"])
-    uses = dict(c.get("lair_uses") or {})
-    new_hp, new_temp = int(c["hp"]), int(c.get("temp_hp") or 0)
-    new_sanity = int(c.get("sanity", 100))
+    classify = None
+    if req.kind == "stunt":
+        text = (req.stunt_text or "").strip()
+        if not text:
+            raise HTTPException(400, "Опишите свой боевой трюк")
+        sk_key, dc, _, summary = h_story._classify_free_text(text, c, context=str(enemy.get("name") or ""))
+        classify = (sk_key, dc, summary)
 
-    if req.kind == "stunt" and req.stunt_text:
-        sk_key, dc, _, action_summary = h_story._classify_free_text(req.stunt_text, c, context=str(enemy.get("name") or ""))
-        roll_res = rules.skill_check(c, ("skill", sk_key))
-        win = roll_res.natural == 20 or (roll_res.natural != 1 and roll_res.total >= dc)
-        dmg = max(2, _rng.randint(4, 10) + stat_mod) if win else max(1, _rng.randint(1, 4))
-        enemy["hp"] = max(0, int(enemy["hp"]) - dmg)
-        log_lines.append(
-            f"🎲 Манёвр «{req.stunt_text[:60]}» ({rules.SKILLS[sk_key][0]} Сл {dc}): "
-            f"выпало {roll_res.total} — {'УСПЕХ' if win else 'ОСЕЧКА'}! Враг теряет {dmg} ОЗ."
+    try:
+        out = combat.run_round(
+            c, enemy, req.kind, ac_bonus=h_perks.ac_bonus(c),
+            seq=req.seq, key=req.key, classify=classify,
         )
-    elif req.kind == "mech":
-        p_mech = lotm.pathway_mechanic_for(c["pathway"], int(c.get("sequence", 9))) if hasattr(lotm, "pathway_mechanic_for") else lotm.PATHWAY_MECHANICS.get(c["pathway"])
-        left = int(uses.get("path_res", p_mech.get("max_base", 3) if p_mech else 0))
-        if not p_mech or left <= 0:
-            raise HTTPException(400, "Заряды механики Пути исчерпаны")
-        uses["path_res"] = left - 1
-        tier_mult = max(1, lotm.OPEN_TIERS.get(int(c["sequence"]), 1) // 2 + 1)
-        die_side = p_mech["dice"].split("d")[1]
-        roll = rules.roll_expression(f"{tier_mult}d{die_side}")
-        dmg = max(2, roll.total + stat_mod)
-        enemy["hp"] = max(0, int(enemy["hp"]) - dmg)
-        new_temp = max(new_temp, tier_mult * 3)
-        log_lines.append(f"⚡ {p_mech['name']}: наносит {dmg} урона и укрепляет щит!")
-    elif req.kind == "myth":
-        if uses.get("mythical_used") or int(c.get("sequence", 9)) > 4:
-            raise HTTPException(400, "Форма Мифического Существа недоступна")
-        cost = 10 if "mythical_anchor" in (c.get("feats") or []) else 20
-        uses["mythical_used"] = 1
-        new_sanity = max(5, new_sanity - cost)
-        seq = int(c["sequence"])
-        dmg = rules.roll_expression(f"{10 - seq}d10").total + stat_mod
-        enemy["hp"] = max(0, int(enemy["hp"]) - dmg)
-        new_temp = max(new_temp, (10 - seq) * 10)
-        log_lines.append(f"👁 Форма Мифического Существа! Нанесено {dmg} урона, щит +{new_temp} ОЗ!")
-    else:
-        cantrip = next((s for s in skills if s["seq"] == 9 and s["key"] == "core"), None)
-        c_dice = cantrip["dice"] if cantrip and cantrip.get("dice") else "1d8"
-        c_name = cantrip["name"] if cantrip else "Удар Потустороннего"
-        d20 = _rng.randint(1, 20)
-        atk_tot = d20 + prof + stat_mod
-        if d20 == 20 or atk_tot >= int(enemy["ac"]):
-            roll = rules.roll_expression(c_dice)
-            dmg = max(1, roll.total + stat_mod + (roll.total if d20 == 20 else 0))
-            enemy["hp"] = max(0, int(enemy["hp"]) - dmg)
-            log_lines.append(f"🗡 {c_name}: попадание ({atk_tot} vs КД {enemy['ac']}) → −{dmg} ОЗ врагу!")
-        else:
-            log_lines.append(f"🗡 {c_name}: промах ({atk_tot} vs КД {enemy['ac']})!")
+    except (combat.CombatError, ValueError) as e:
+        raise HTTPException(400, str(e))
 
-    victory = False
-    if int(enemy["hp"]) <= 0:
-        victory = True
-        dig_reward = 3 if int(c.get("sequence", 9)) >= 7 else 2
-        new_dig = min(100, int(c.get("digestion") or 0) + dig_reward)
-        await db.update_character(uid, hp=new_hp, temp_hp=new_temp, sanity=new_sanity, digestion=new_dig, lair_uses=h_perks.reset_combat_uses(c))
-        await db.update_story_session(uid, enemy={})
-        log_lines.append(f"🏆 Победа! {enemy['name']} повержен! Переваривание зелья +{dig_reward}% (итого {new_dig}%).")
-    else:
-        e_d20 = _rng.randint(1, 20)
-        e_atk = e_d20 + int(enemy.get("atk_bonus", 3))
-        eff_ac = int(c.get("ac", 10)) + h_perks.ac_bonus(c)
-        if e_d20 == 20 or e_atk >= eff_ac:
-            e_dmg = max(1, rules.roll_expression(enemy.get("dmg_dice", "1d8")).total + int(enemy.get("dmg_mod", 1)))
-            new_hp, new_temp = rules.apply_damage(new_hp, new_temp, e_dmg)
-            log_lines.append(f"👹 {enemy['name']} контратакует ({e_atk} vs КД {eff_ac}) → −{e_dmg} ОЗ вам!")
-        else:
-            log_lines.append(f"🛡 {enemy['name']} промахивается ({e_atk} vs КД {eff_ac})!")
-        if new_hp <= 0:
-            new_hp = max(1, int(c["max_hp"]) // 2)
-            new_sanity = max(10, new_sanity - 15)
-            await db.update_character(uid, hp=new_hp, temp_hp=0, sanity=new_sanity, lair_uses=h_perks.reset_combat_uses(c))
-            await db.update_story_session(uid, enemy={})
-            log_lines.append("🕯 Серый Туман спас вас от гибели! Вы отступили.")
-        else:
-            enemy["round"] = int(enemy.get("round", 1)) + 1
-            await db.update_character(uid, hp=new_hp, temp_hp=new_temp, sanity=new_sanity, lair_uses=uses)
-            await db.update_story_session(uid, enemy=enemy)
-
-    return {"log": log_lines, "victory": victory, "state": await api_get_state(uid)}
+    c, session = await h_story._persist_combat_outcome(uid, c, session, enemy, out)
+    await h_story._log_combat_rolls(uid, c, out)
+    return {"log": combat.render_plain(out), "victory": out.victory, "state": await api_get_state(uid)}
 
 
 @app.post("/api/shop/invoice")

@@ -16,6 +16,7 @@ from aiogram.types import (
     Message,
 )
 
+import combat_engine as combat
 import config
 import db
 import h_perks
@@ -1707,86 +1708,81 @@ async def _handle_free_text_action(message: Message, text: str):
     await _execute_narrative_turn(message, c, session, picked, mode="normal", edit=False)
 
 
+async def _persist_combat_outcome(uid: int, c: dict, session: dict, enemy: dict,
+                                  out: combat.CombatOutcome) -> tuple[dict, dict]:
+    """Применяет итог боевого раунда из combat_engine к БД. Возвращает (c, session)."""
+    fields: dict = {}
+    for f in ("hp", "temp_hp", "sanity", "digestion"):
+        if f in out.delta:
+            fields[f] = out.delta[f]
+
+    if out.victory or out.gray_fog_save:
+        fields["lair_uses"] = h_perks.reset_combat_uses(c)
+        if out.spell_slots:
+            fields["spell_slots"] = out.spell_slots
+        extra: dict = {"enemy": {}}
+        if out.victory:
+            old_sum = (session.get("summary") or "").strip()
+            extra["summary"] = f"{old_sum} Победил в бою: {enemy['name']}.".strip()[-1200:]
+        session = await db.update_story_session(uid, **extra)
+        await db.update_character(uid, **fields)
+        return await db.get_character(uid), await db.get_story_session(uid)
+
+    if out.spell_slots:
+        fields["spell_slots"] = out.spell_slots
+    fields["lair_uses"] = out.uses
+    session = await db.update_story_session(uid, enemy=enemy)
+    if fields:
+        await db.update_character(uid, **fields)
+    return await db.get_character(uid), session
+
+
+async def _log_combat_rolls(uid: int, c: dict, out: combat.CombatOutcome) -> None:
+    """Боевые броски раунда — в roll_log (Хроника подвигов во вкладке «Дело»)."""
+    for ev in out.events:
+        rl = ev.get("roll")
+        if not rl:
+            continue
+        try:
+            await db.log_roll(
+                user_id=uid,
+                chat_id=uid,
+                chat_type="combat",
+                username=c.get("username") or "",
+                char_name=c.get("name") or "",
+                command="check",
+                label=str(rl.get("label") or "")[:120],
+                detail=str(rl.get("detail") or "")[:120],
+                total=int(rl.get("total") or 0),
+                natural=int(rl["natural"]) if rl.get("natural") is not None else None,
+            )
+        except Exception:
+            pass
+
+
 async def _handle_combat_free_text(message: Message, c: dict, session: dict, text: str):
     """Позволяет писать любую дичь и трюки прямо во время пошагового боя 1-на-1."""
     uid = c["user_id"]
     enemy = dict(session.get("enemy") or {})
     sk_key, dc, _, action_summary = _classify_free_text(text, c, context=str(enemy.get("name") or ""))
-    roll_res = rules.skill_check(c, ("skill", sk_key))
-    success = roll_res.natural == 20 or (roll_res.natural != 1 and roll_res.total >= dc)
-
-    _, stat_mod = rules.best_path_stat(c)
-    choices = {int(k): v for k, v in (c.get("pathway_choices") or {}).items()}
-    skills = rules.path_skills(c["pathway"], choices, c["sequence"], c["start_sequence"])
-    cantrip = next((s for s in skills if s["seq"] == 9 and s["key"] == "core"), None)
-    c_dice = cantrip["dice"] if cantrip and cantrip.get("dice") else "1d8"
-
-    log_lines = [f"🗣 <b>Твой манёвр:</b> <i>«{esc(text[:150])}»</i>"]
-    new_hp, new_temp = int(c["hp"]), int(c.get("temp_hp") or 0)
-    new_sanity = int(c.get("sanity", 100))
-
-    if success:
-        base_roll = rules.roll_expression(c_dice)
-        stunt_bonus = _rng.randint(2, 6) + (base_roll.total if roll_res.natural == 20 else 0)
-        dmg = max(2, base_roll.total + stat_mod + stunt_bonus)
-        enemy["hp"] = max(0, int(enemy["hp"]) - dmg)
-        log_lines.append(
-            f"🎲 <b>{esc(rules.SKILLS[sk_key][0])} (Сл {dc}):</b> {roll_res.total} (d20={roll_res.natural}) — ✅ <b>Трюк удался!</b>\n"
-            f"💥 Твой нестандартный ход застаёт врага врасплох: <b>−{dmg} ОЗ</b> и помеха врагу!"
+    try:
+        out = combat.run_round(
+            c, enemy, "stunt", ac_bonus=h_perks.ac_bonus(c),
+            stunt_text=text, classify=(sk_key, dc, action_summary),
         )
-        enemy_dis = True
-    else:
-        grazed = max(1, (rules.roll_expression(c_dice).total + stat_mod) // 2)
-        enemy["hp"] = max(0, int(enemy["hp"]) - grazed)
-        log_lines.append(
-            f"🎲 <b>{esc(rules.SKILLS[sk_key][0])} (Сл {dc}):</b> {roll_res.total} (d20={roll_res.natural}) — ❌ <b>Осечка!</b>\n"
-            f"🗡 Трюк сорвался, удар прошёл вскользь: всего <b>−{grazed} ОЗ</b> врагу."
-        )
-        enemy_dis = False
-
-    if int(enemy["hp"]) <= 0:
-        dig_reward = 3 if int(c.get("sequence", 9)) >= 7 else 2
-        new_dig = min(100, int(c.get("digestion") or 0) + dig_reward)
-        await db.update_character(uid, hp=new_hp, temp_hp=new_temp, sanity=new_sanity, digestion=new_dig, lair_uses=h_perks.reset_combat_uses(c))
-        session = await db.update_story_session(uid, enemy={})
-        c = await db.get_character(uid)
-        win_text = (
-            f"{_header_bar(c, session)}\n"
-            + "\n".join(log_lines)
-            + f"\n\n🏆 <b>Красивая победа!</b> {esc(enemy['name'])} повержен твоим приёмом.\n"
-            f"🧪 Метод отыгрыша: <b>+{dig_reward}% к перевариванию зелья</b> (итого: <b>{new_dig}%</b>)."
-        )
-        await message.answer(win_text, reply_markup=_story_kb(c, session))
+    except combat.CombatError as e:
+        await message.answer(str(e))
         return
 
-    e_d20 = min(_rng.randint(1, 20), _rng.randint(1, 20)) if enemy_dis else _rng.randint(1, 20)
-    e_atk = e_d20 + int(enemy.get("atk_bonus", 3))
-    eff_ac = int(c.get("ac", 10)) + h_perks.ac_bonus(c)
-    if e_d20 == 20 or e_atk >= eff_ac:
-        e_roll = rules.roll_expression(enemy.get("dmg_dice", "1d8"))
-        e_dmg = max(1, e_roll.total + int(enemy.get("dmg_mod", 1)))
-        new_hp, new_temp = rules.apply_damage(new_hp, new_temp, e_dmg)
-        log_lines.append(f"👹 <b>{esc(enemy['name'])}</b> бьёт в ответ ({e_atk} vs КД {eff_ac}) → <b>−{e_dmg} ОЗ</b> тебе!")
-    else:
-        log_lines.append(f"🛡 <b>{esc(enemy['name'])}</b> дезориентирован твоим трюком и мажет ({e_atk} vs КД {eff_ac})!")
+    c, session = await _persist_combat_outcome(uid, c, session, enemy, out)
+    lines = combat.render_html(out)
+    await _log_combat_rolls(uid, c, out)
 
-    if new_hp <= 0:
-        new_hp = max(1, int(c["max_hp"]) // 2)
-        new_sanity = max(10, new_sanity - 15)
-        await db.update_character(uid, hp=new_hp, temp_hp=0, sanity=new_sanity, lair_uses=h_perks.reset_combat_uses(c))
-        session = await db.update_story_session(uid, enemy={})
-        c = await db.get_character(uid)
-        await message.answer(
-            f"{_header_bar(c, session)}\n" + "\n".join(log_lines) + "\n\n🕯 <b>Серый Туман спас тебя на грани гибели!</b>",
-            reply_markup=_story_kb(c, session),
-        )
+    if out.victory or out.gray_fog_save:
+        await message.answer(f"{_header_bar(c, session)}\n" + "\n".join(lines),
+                             reply_markup=_story_kb(c, session))
         return
-
-    enemy["round"] = int(enemy.get("round", 1)) + 1
-    await db.update_character(uid, hp=new_hp, temp_hp=new_temp, sanity=new_sanity)
-    session = await db.update_story_session(uid, enemy=enemy)
-    c = await db.get_character(uid)
-    await message.answer(_combat_screen_text(c, session, log_lines), reply_markup=_combat_kb(c, session))
+    await message.answer(_combat_screen_text(c, session, lines), reply_markup=_combat_kb(c, session))
 
 
 @router.callback_query(F.data == "st:hunt")
@@ -1853,144 +1849,35 @@ async def cb_combat_attack(cb: CallbackQuery):
 
     parts = cb.data.split(":")
     kind = parts[2]
-    log_lines: list[str] = []
-    _, stat_mod = rules.best_path_stat(c)
-    prof = rules.effective_prof_bonus(c)
-    choices = {int(k): v for k, v in (c.get("pathway_choices") or {}).items()}
-    skills = rules.path_skills(c["pathway"], choices, c["sequence"], c["start_sequence"])
-    uses = dict(c.get("lair_uses") or {})
-    new_hp, new_temp = int(c["hp"]), int(c.get("temp_hp") or 0)
-    new_sanity = int(c.get("sanity", 100))
+    seq = int(parts[3]) if len(parts) >= 5 else None
+    key = parts[4] if len(parts) >= 5 else None
 
-    if kind == "cantrip":
-        cantrip = next((s for s in skills if s["seq"] == 9 and s["key"] == "core"), None)
-        c_name = cantrip["name"] if cantrip else "Удар Потустороннего"
-        c_dice = cantrip["dice"] if cantrip and cantrip.get("dice") else "1d8"
-        d20 = _rng.randint(1, 20)
-        atk_tot = d20 + prof + stat_mod
-        if d20 == 20 or atk_tot >= int(enemy["ac"]):
-            roll = rules.roll_expression(c_dice)
-            dmg = max(1, roll.total + stat_mod + (roll.total if d20 == 20 else 0))
-            enemy["hp"] = max(0, int(enemy["hp"]) - dmg)
-            crit_str = " (КРИТ!)" if d20 == 20 else ""
-            log_lines.append(f"🗡 <b>{esc(c_name)}</b>: попадание {atk_tot} vs КД {enemy['ac']}{crit_str} → <b>−{dmg} ОЗ</b> врагу!")
-        else:
-            log_lines.append(f"🗡 <b>{esc(c_name)}</b>: бросок {atk_tot} (d20={d20}) vs КД {enemy['ac']} — промах!")
-
-    elif kind == "mech":
-        p_mech = lotm.PATHWAY_MECHANICS.get(c["pathway"])
-        left = int(uses.get("path_res", p_mech.get("max_base", 3) if p_mech else 0))
-        if not p_mech or left <= 0:
-            await cb.answer("Заряды механики Пути закончились!", show_alert=True)
-            return
-        uses["path_res"] = left - 1
-        tier_mult = max(1, lotm.OPEN_TIERS.get(int(c["sequence"]), 1) // 2 + 1)
-        die_side = p_mech["dice"].split("d")[1]
-        roll = rules.roll_expression(f"{tier_mult}d{die_side}")
-        dmg = max(2, roll.total + stat_mod)
-        enemy["hp"] = max(0, int(enemy["hp"]) - dmg)
-        new_temp = max(new_temp, tier_mult * 3)
-        log_lines.append(f"⚡ <b>{esc(p_mech['name'])}</b>: наносит <b>{dmg}</b> урона врагу и укрепляет духовный щит!")
-
-    elif kind == "myth":
-        if uses.get("mythical_used") or int(c.get("sequence", 9)) > 4:
-            await cb.answer("Недоступно!", show_alert=True)
-            return
-        cost = 10 if "mythical_anchor" in (c.get("feats") or []) else 20
-        if new_sanity < cost:
-            await cb.answer("Недостаточно Рассудка!", show_alert=True)
-            return
-        uses["mythical_used"] = 1
-        new_sanity -= cost
-        seq = int(c["sequence"])
-        roll = rules.roll_expression(f"{10 - seq}d10")
-        dmg = roll.total + stat_mod
-        enemy["hp"] = max(0, int(enemy["hp"]) - dmg)
-        new_temp = max(new_temp, (10 - seq) * 10)
-        log_lines.append(f"👁 <b>Форма Мифического Существа!</b> Враг получает <b>{dmg}</b> сокрушительного урона, твой щит: +{new_temp} ОЗ!")
-
-    elif kind == "sk" and len(parts) >= 5:
-        seq, key = int(parts[3]), parts[4]
-        sk = next((s for s in skills if s["seq"] == seq and s["key"] == key), None)
-        if not sk:
-            await cb.answer("Умение не найдено", show_alert=True)
-            return
-        cost, rank = int(sk["slot_cost"]), int(sk["slot_rank"])
-        if cost > 0:
-            slots = {str(k): dict(v) for k, v in (c.get("spell_slots") or {}).items()}
-            bucket = slots.get(str(rank)) or {}
-            if int(bucket.get("left", 0)) < cost:
-                await cb.answer(f"Не хватает ячеек Р{rank}! Используй бесплатный Заговор, напиши трюк в чат или отдохни.", show_alert=True)
-                return
-            bucket["left"] = int(bucket["left"]) - cost
-            slots[str(rank)] = bucket
-            await db.update_character(uid, spell_slots=slots)
-
-        val = rules.roll_expression(sk["dice"]).total + stat_mod if sk.get("dice") else (stat_mod + prof * 2)
-        low_desc = (sk.get("desc") or "").lower()
-        if any(w in low_desc for w in ("лечит", "исцел", "восстанавлив")) and "урон" not in low_desc:
-            new_hp = rules.apply_heal(new_hp, int(c["max_hp"]), val)
-            log_lines.append(f"✨ <b>{esc(sk['name'])}</b>: восстанавливает тебе <b>+{val} ОЗ</b>!")
-        else:
-            dc = 8 + prof + stat_mod
-            e_save = _rng.randint(1, 20) + int(enemy.get("save_bonus", 2))
-            if sk.get("save") and e_save >= dc:
-                dmg = max(1, val // 2)
-                log_lines.append(f"✨ <b>{esc(sk['name'])}</b>: враг выбросил спасбросок {e_save} (Сл {dc}) → <b>−{dmg} ОЗ</b> (50%)!")
-            else:
-                dmg = max(1, val)
-                log_lines.append(f"✨ <b>{esc(sk['name'])}</b>: прямое поражение цели → <b>−{dmg} ОЗ</b> врагу!")
-            enemy["hp"] = max(0, int(enemy["hp"]) - dmg)
-
-    if int(enemy["hp"]) <= 0:
-        dig_reward = 3 if int(c.get("sequence", 9)) >= 7 else 2
-        new_dig = min(100, int(c.get("digestion") or 0) + dig_reward)
-        fresh_uses = h_perks.reset_combat_uses(c)
-        await db.update_character(uid, hp=new_hp, temp_hp=new_temp, sanity=new_sanity, digestion=new_dig, lair_uses=fresh_uses)
-        old_sum = (session.get("summary") or "").strip()
-        new_sum = f"{old_sum} Победил в бою: {enemy['name']}.".strip()[-1200:]
-        session = await db.update_story_session(uid, enemy={}, summary=new_sum)
-        c = await db.get_character(uid)
-        promo_note = "\n🎉 <b>Зелье переварено на 100%! Нажми /promote для перехода на новую Последовательность!</b>" if new_dig >= 100 else ""
-        win_text = (
-            f"{_header_bar(c, session)}\n"
-            + "\n".join(log_lines)
-            + f"\n\n🏆 <b>Победа!</b> {esc(enemy['name'])} повержен, а его потусторонняя черта отделяется в тумане.\n"
-            f"🧪 Метод отыгрыша в бою: <b>+{dig_reward}% к перевариванию зелья</b> (итого: <b>{new_dig}%</b>).{promo_note}"
+    try:
+        out = combat.run_round(
+            c, enemy, kind, ac_bonus=h_perks.ac_bonus(c), seq=seq, key=key,
         )
-        await ui.safe_edit(cb.message, win_text, _story_kb(c, session))
+    except combat.CombatError as e:
+        await cb.answer(str(e), show_alert=True)
+        return
+
+    c, session = await _persist_combat_outcome(uid, c, session, enemy, out)
+    lines = combat.render_html(out)
+    await _log_combat_rolls(uid, c, out)
+
+    if out.victory:
+        promo = ""
+        if int(c.get("digestion") or 0) >= 100:
+            promo = "\n🎉 <b>Зелье переварено на 100%! Нажми /promote для перехода на новую Последовательность!</b>"
+        await ui.safe_edit(cb.message, f"{_header_bar(c, session)}\n" + "\n".join(lines) + promo,
+                           _story_kb(c, session))
         await cb.answer("Враг повержен! 🏆")
         return
 
-    e_d20 = _rng.randint(1, 20)
-    e_atk = e_d20 + int(enemy.get("atk_bonus", 3))
-    eff_ac = int(c.get("ac", 10)) + h_perks.ac_bonus(c)
-    if e_d20 == 20 or e_atk >= eff_ac:
-        e_roll = rules.roll_expression(enemy.get("dmg_dice", "1d8"))
-        e_dmg = max(1, e_roll.total + int(enemy.get("dmg_mod", 1)))
-        new_hp, new_temp = rules.apply_damage(new_hp, new_temp, e_dmg)
-        log_lines.append(f"👹 <b>{esc(enemy['name'])}</b> контратакует ({e_atk} vs КД {eff_ac}) и наносит тебе <b>{e_dmg} урона</b>!")
-    else:
-        log_lines.append(f"🛡 <b>{esc(enemy['name'])}</b> атакует ({e_atk} vs КД {eff_ac}), но ты уходишь от удара!")
-
-    if new_hp <= 0:
-        new_hp = max(1, int(c["max_hp"]) // 2)
-        new_sanity = max(10, new_sanity - 15)
-        await db.update_character(uid, hp=new_hp, temp_hp=0, sanity=new_sanity, lair_uses=h_perks.reset_combat_uses(c))
-        session = await db.update_story_session(uid, enemy={})
-        c = await db.get_character(uid)
-        lose_text = (
-            f"{_header_bar(c, session)}\n"
-            + "\n".join(log_lines)
-            + "\n\n🕯 <b>Серый Туман спас тебя на грани гибели!</b> Ты отступаешь в укрытие, потеряв 15% Рассудка, но сохранив жизнь."
-        )
-        await ui.safe_edit(cb.message, lose_text, _story_kb(c, session))
+    if out.gray_fog_save:
+        await ui.safe_edit(cb.message, f"{_header_bar(c, session)}\n" + "\n".join(lines),
+                           _story_kb(c, session))
         await cb.answer("Ты едва выжил...")
         return
 
-    enemy["round"] = int(enemy.get("round", 1)) + 1
-    await db.update_character(uid, hp=new_hp, temp_hp=new_temp, sanity=new_sanity, lair_uses=uses)
-    session = await db.update_story_session(uid, enemy=enemy)
-    c = await db.get_character(uid)
-    await ui.safe_edit(cb.message, _combat_screen_text(c, session, log_lines), _combat_kb(c, session))
+    await ui.safe_edit(cb.message, _combat_screen_text(c, session, lines), _combat_kb(c, session))
     await cb.answer()

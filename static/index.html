@@ -490,6 +490,13 @@ details.more summary:hover { color: var(--brass2); }
 .block.locked { opacity: 0.55; border-style: dashed; }
 .stunt-row { display: flex; gap: 8px; margin-top: 10px; }
 .stunt-row input { flex: 1; min-height: 40px; padding: 0 12px; background: var(--ink); border: 1px solid var(--line); border-radius: var(--r); }
+.skillcast-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; }
+.skillcast-row:empty { display: none; }
+.skillcast { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 42px; padding: 6px 12px;
+  background: var(--ink); border: 1px solid var(--line); border-radius: var(--r); color: var(--paper); cursor: pointer; font-size: 13.5px; text-align: left; }
+.skillcast:hover { border-color: var(--brass); }
+.skillcast small { color: var(--paper3); white-space: nowrap; }
+.skillcast.no-slots { opacity: 0.5; cursor: not-allowed; }
 .cact-grid .cact:last-child { grid-column: 1 / -1; }
 .price-note { font-size: 13px; color: var(--paper3); }
 .wz-body { max-width: 1040px; width: 94vw; }
@@ -812,6 +819,7 @@ body { background: radial-gradient(ellipse at 50% -10%, #19140b 0%, var(--ink) 6
 <input id="stunt-text" maxlength="240" placeholder="Опрокинуть газовый фонарь на тварь…">
 <button class="btn btn-brass btn-sm" id="stunt-go" type="button">Выполнить</button>
 </div>
+<div class="skillcast-row" id="skillcast"></div>
 </div>
 </div>
 </div>
@@ -1056,7 +1064,14 @@ const USER_ID = resolveUserId();
 /* ================= Глобальный STATE ================= */
 const STATE = { meta: null, data: null, tab: 'hero', intent: 'act', busy: false, journalOpen: false, booted: false, serverConnected: false, demo: location.protocol === 'file:' };
 const CH = () => (STATE.data && STATE.data.character) || null;
-const SS = () => (STATE.data && STATE.data.session) || {};
+const SS = () => {
+  const s = (STATE.data && STATE.data.session) || {};
+  if (s.enemy && s.enemy.name && typeof s.enemy.hp === 'number' && s.enemy.hp > 0) {
+    if (!s.combat || s.combat.active !== true) s.combat = { active: true, round: s.enemy.round || 1, enemy: s.enemy };
+    else if (!s.combat.enemy) s.combat.enemy = s.enemy;
+  }
+  return s;
+};
 
 /* ================= API-клиент ================= */
 class ApiError extends Error { constructor(m, s) { super(m); this.status = s; } }
@@ -1247,6 +1262,21 @@ function renderCombat() {
   $('#c-mech').textContent = m ? `${m.left}/${m.max_base} ${resLabel}`.trim() : 'ресурс';
   $('#c-mech-btn').disabled = !m || m.left <= 0 || STATE.busy;
   $$('#combat .cact').forEach(b => { if (b.id !== 'c-mech-btn') b.disabled = STATE.busy; });
+
+  const sc = $('#skillcast');
+  if (sc) {
+    const slots = (ch && ch.spell_slots) || {};
+    const abil = ((ch && ch.abilities) || []).filter(a => a.action !== 'passive' && !(a.seq === 9 && a.key === 'core'))
+      .sort((a, b) => b.seq - a.seq);
+    sc.innerHTML = abil.map(a => {
+      const rank = Number(a.slot_rank) || 0, cost = Number(a.slot_cost) || 0;
+      const left = (slots[String(rank)] || {}).left;
+      const hasSlots = !cost || (left != null && Number(left) >= cost);
+      const price = cost ? `Р${rank}` : 'беспл.';
+      return `<button class="skillcast ${hasSlots ? '' : 'no-slots'}" data-combat="sk" data-seq="${a.seq}" data-key="${esc(a.key)}"
+        type="button" ${STATE.busy || !hasSlots ? 'disabled' : ''}><span>${esc(a.name)}</span><small>${price}${cost ? ' · ' + (left != null ? left : '?') + ' ост.' : ''}</small></button>`;
+    }).join('');
+  }
 }
 
 /* ================= Досье: вкладки ================= */
@@ -1571,7 +1601,7 @@ async function makeMove({ option_id = null, free_text = null, intent = 'act', la
 }
 
 /* ================= Бой и дело ================= */
-async function combatAction(kind, stunt_text = null) {
+async function combatAction(kind, stunt_text = null, seq = null, key = null) {
   if (STATE.busy) return;
   if (kind === 'new_arc') {
     if (!confirm('Начать новое дело? Летопись и улики текущей главы очистятся, сюжет начнётся с чистого листа.')) return;
@@ -1599,7 +1629,7 @@ async function combatAction(kind, stunt_text = null) {
   }
   setBusy(true); haptic('impact', kind === 'flee' ? 'light' : 'heavy');
   try {
-    const r = await api('/api/combat/action', { user_id: USER_ID, kind, stunt_text });
+    const r = await api('/api/combat/action', { user_id: USER_ID, kind, stunt_text, seq, key });
     if (r.log && r.log.length) Journal.push({ t: 'combat', lines: r.log });
     if (r.victory) { toast('Враг повержен'); haptic('notify', 'success'); }
     setBusy(false); applyState(r.state);
@@ -2561,6 +2591,7 @@ document.addEventListener('click', e => {
   if ((el = t.closest('[data-combat]'))) {
     const k = el.dataset.combat;
     if (k === 'stunt') { const row = $('#stunt-row'); row.classList.toggle('hidden'); if (!row.classList.contains('hidden')) $('#stunt-text').focus(); return; }
+    if (k === 'sk') return combatAction('sk', null, null, Number(el.dataset.seq), el.dataset.key);
     return combatAction(k);
   }
   if (t.closest('#stunt-go')) { const v = ($('#stunt-text').value || '').trim(); if (!v) return toast('Опишите трюк'); $('#stunt-text').value = ''; $('#stunt-row').classList.add('hidden'); return combatAction('stunt', v); }
