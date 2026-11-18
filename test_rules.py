@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import unittest
 
+import lotm_data as lotm
 import rules
 
 
@@ -144,6 +145,142 @@ class TestCombatRules(unittest.TestCase):
         self.assertEqual(rules.apply_temp_hp(8, 5), 8)    # меньше → оставить
         self.assertEqual(rules.apply_temp_hp(8, 10), 10)  # больше → заменить
 
+class TestFreeTextArbitration(unittest.TestCase):
+    def setUp(self):
+        import h_story
+        self.h_story = h_story
+        self.char = {
+            "pathway": "seer",
+            "sequence": 9,
+            "start_sequence": 9,
+            "pathway_choices": {},
+            "skills": {"sleight_of_hand": 1, "stealth": 1, "perception": 1},
+        }
+
+    def test_pickpocket_strange_npc_dc(self):
+        # Заявка из ТЗ: кража у странного незнакомца должна иметь адекватную Сл 14-15 вместо 8
+        text = "Аккуратно пройдя мимоход возле него залезть к нему в карман попытавшись что-то найти и присвоить, азарт со странным человеком оказался сильнее моей адекватности"
+        sk, dc, combat, summary = self.h_story._classify_free_text(text, self.char)
+        self.assertEqual(sk, "sleight_of_hand")
+        self.assertIn(dc, (14, 15))
+        self.assertFalse(combat)
+        self.assertEqual(summary, "Карманная кража")
+
+    def test_pickpocket_crowd_standard_dc(self):
+        text = "Нырнуть в толпу и незаметно залезть в карман прохожему"
+        sk, dc, _, summary = self.h_story._classify_free_text(text, self.char)
+        self.assertEqual(sk, "sleight_of_hand")
+        self.assertIn(dc, (13, 14))
+        self.assertEqual(summary, "Карманная кража")
+
+    def test_pickpocket_drunk_easy_dc(self):
+        text = "Пока пьяный зевака спит в переулке, залезть в его карман"
+        sk, dc, _, summary = self.h_story._classify_free_text(text, self.char)
+        self.assertEqual(sk, "sleight_of_hand")
+        self.assertIn(dc, (10, 11))
+        self.assertEqual(summary, "Карманная кража")
+
+    def test_steal_from_beyonder_extreme_dc(self):
+        text = "Попытаться обворовать Потустороннего капитана стражи"
+        sk, dc, _, summary = self.h_story._classify_free_text(text, self.char)
+        self.assertEqual(sk, "sleight_of_hand")
+        self.assertIn(dc, (17, 18))
+
+    def test_manner_words_do_not_reduce_danger_dc(self):
+        text = "Очень тихо, осторожно и аккуратно подойти со спины к подозрительному стражнику и срезать кошель"
+        sk, dc, _, summary = self.h_story._classify_free_text(text, self.char)
+        self.assertEqual(sk, "sleight_of_hand")
+        self.assertGreaterEqual(dc, 14)
+        self.assertEqual(summary, "Карманная кража")
+
+    def test_context_danger_escalates_dc(self):
+        text = "Залезть к нему в карман и вытащить письмо"
+        # Без контекста опасной цели: стандартная кража Сл 13-14
+        sk1, dc1, _, _ = self.h_story._classify_free_text(text, self.char)
+        self.assertEqual(sk1, "sleight_of_hand")
+        self.assertIn(dc1, (13, 14))
+        # С контекстом опасной цели из последнего сообщения мастера: Сл 14-15
+        sk2, dc2, _, _ = self.h_story._classify_free_text(text, self.char, context="Перед вами стоит настороженный страж")
+        self.assertEqual(sk2, "sleight_of_hand")
+        self.assertIn(dc2, (14, 15))
+
+    def test_min_dc_floor_for_active_checks(self):
+        text = "Аккуратно осмотреться по сторонам"
+        sk, dc, _, summary = self.h_story._classify_free_text(text, self.char)
+        self.assertGreaterEqual(dc, 10)
+        self.assertEqual(summary, "Осмотр окружения")
+
+    def test_action_summary_labels_and_custom_clipping(self):
+        # Проверка ярлыков в стиле BG3 / Disco Elysium
+        cases = [
+            ("Быстро нырнуть в тень и затаиться", "stealth", "Уход в тень"),
+            ("Смешаться со столпом зевак на площади", "stealth", "Растворение в толпе"),
+            ("Выпрыгнуть через окно на соседнюю крышу", "acrobatics", "Прыжок в окно"),
+            ("Выбить ногой старую дубовую дверь", "athletics", "Силовой прорыв двери"),
+            ("Попытаться соврать констеблю о своем алиби", "deception", "Блеф и отвлечение"),
+            ("Осмотреть старые часы на каминной полке", "investigation", "Осмотр окружения"),
+        ]
+        for txt, expected_sk, expected_lbl in cases:
+            sk, _, _, summary = self.h_story._classify_free_text(txt, self.char)
+            self.assertEqual(summary, expected_lbl, f"Failed for '{txt}': got '{summary}' instead of '{expected_lbl}'")
+
+        # Длинная заявка на 600 символов: ярлык кражи и ограничение длины
+        long_text = "Аккуратно и незаметно подойти к господину в цилиндре, пока он отвлечен уличным фокусником, и осторожно срезать кожаный кошель с его пояса, а затем немедленно раствориться в толпе зевак и свернуть в ближайший темный переулок, делая вид, что я просто случайный прохожий, спешащий по своим обычным делам в нижнем районе Тингена."
+        sk_long, dc_long, _, sum_long = self.h_story._classify_free_text(long_text, self.char)
+        self.assertLessEqual(len(sum_long), 45)
+        self.assertEqual(sum_long, "Карманная кража")
+
+        # Нешаблонная заявка: обрезка первой смысловой фразы до 45 символов
+        unusual = "Провести ритуальным мелом черту на полу и прислушаться к вибрациям эфира"
+        _, _, _, sum_unusual = self.h_story._classify_free_text(unusual, self.char)
+        self.assertLessEqual(len(sum_unusual), 45)
+        self.assertTrue(len(sum_unusual.split()) <= 5)
+
+
+class TestPathwayMechanicFormatting(unittest.TestCase):
+    """Тесты форматирования описаний классовых механик Путей и чистоты кодировки."""
+
+    def test_marauder_theft_no_dmg_placeholder_and_no_corrupt_chars(self):
+        # 1. Сырые данные Пути Ошибки (Посл. 9) не содержат битых символов \ufffd
+        raw_mech = lotm.pathway_mechanic_for("error", 9)
+        self.assertEqual(raw_mech["name"], "Воровство Мародёра")
+        self.assertNotIn("\ufffd", raw_mech["effect"])
+        self.assertIn("—", raw_mech["effect"])
+
+        # 2. Форматирование без персонажа подставляет кость урона 2d6
+        formatted = rules.format_pathway_mechanic(raw_mech)
+        self.assertNotIn("{dmg}", formatted["effect"])
+        self.assertNotIn("{", formatted["effect"])
+        self.assertNotIn("}", formatted["effect"])
+        self.assertIn("2d6 урона", formatted["effect"])
+        self.assertIn("сбивает врага с толку — крадёт +2 Защиты", formatted["effect"])
+
+        # 3. Форматирование с персонажем с положительным модификатором характеристики
+        char_with_dex = {
+            "pathway": "error",
+            "stats": {"dex": 14},  # +2 мод
+        }
+        fmt_with_char = rules.format_pathway_mechanic(raw_mech, char_with_dex)
+        self.assertNotIn("{dmg}", fmt_with_char["effect"])
+        self.assertIn("2d6 + 2 урона", fmt_with_char["effect"])
+        self.assertIn("сбивает врага с толку — крадёт +2 Защиты", fmt_with_char["effect"])
+
+    def test_all_pathways_mechanics_format_without_placeholders_or_corrupt_chars(self):
+        for path_key in lotm.PATHWAYS:
+            mech_9 = lotm.pathway_mechanic_for(path_key, 9)
+            formatted_9 = rules.format_pathway_mechanic(mech_9)
+            eff_9 = formatted_9.get("effect", "")
+            self.assertNotIn("{dmg}", eff_9, f"Path {path_key} still contains {{dmg}}")
+            self.assertNotIn("{", eff_9, f"Path {path_key} still contains unparsed '{{'")
+            self.assertNotIn("}", eff_9, f"Path {path_key} still contains unparsed '}}'")
+            self.assertNotIn("\ufffd", eff_9, f"Path {path_key} contains corrupt character \ufffd")
+
+            # Проверка для высоких рангов (Посл. 4)
+            mech_4 = lotm.pathway_mechanic_for(path_key, 4)
+            formatted_4 = rules.format_pathway_mechanic(mech_4)
+            eff_4 = formatted_4.get("effect", "")
+            self.assertNotIn("{dmg}", eff_4, f"High-tier {path_key} contains {{dmg}}")
+            self.assertNotIn("\ufffd", eff_4, f"High-tier {path_key} contains corrupt character \ufffd")
 
 
 if __name__ == "__main__":

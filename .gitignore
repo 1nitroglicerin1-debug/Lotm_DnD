@@ -5,3 +5,13 @@ venv/
 data/
 *.log
 .DS_Store
+
+# Дампы для внешнего ревью и локальные бэкапы
+PROJECT_REVIEW_*
+1_CORE_AND_DATA.txt
+2_HANDLERS_AND_STORY.txt
+3_WEB_PLATFORM.txt
+static/index.backup*
+static/index.before-redesign.html
+static/index.html.bak*
+*.bak_part3

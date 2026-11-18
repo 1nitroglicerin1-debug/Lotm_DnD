@@ -389,7 +389,7 @@ async def cb_cast_pathway_mechanic(cb: CallbackQuery):
     if not c or int(c.get("hp") or 0) <= 0:
         await cb.answer("Недоступно!", show_alert=True)
         return
-    p_mech = lotm.PATHWAY_MECHANICS.get(c["pathway"])
+    p_mech = lotm.pathway_mechanic_for(c["pathway"], int(c.get("sequence", 9))) if hasattr(lotm, "pathway_mechanic_for") else lotm.PATHWAY_MECHANICS.get(c["pathway"])
     if not p_mech:
         await cb.answer()
         return
@@ -406,13 +406,25 @@ async def cb_cast_pathway_mechanic(cb: CallbackQuery):
     roll = rules.roll_expression(expr)
     _, stat_mod = rules.best_path_stat(c)
     total_dmg = roll.total + stat_mod
-    dig = min(100, int(c.get("digestion") or 0) + 5)
+    # Переваривание зелья начисляется ТОЛЬКО за применение в активном бою (+2%)
+    combat = None
+    try:
+        if cb.message.chat.type != "private":
+            combat = await db.get_combat(cb.message.chat.id)
+    except Exception:
+        combat = None
+    old_dig = int(c.get("digestion") or 0)
+    dig = min(100, old_dig + (2 if combat is not None else 0))
     await db.update_character(uid, lair_uses=uses, digestion=dig)
     effect_text = p_mech["effect"].format(dmg=f"<b>{total_dmg}</b> ({expr}{stat_mod:+d})")
+    dig_line = (
+        f"🧪 Переваривание зелья: <b>{dig}%</b> (+2% за применение в бою; осталось зарядов: {left - 1})."
+        if combat is not None
+        else f"🧪 Осталось зарядов «{p_mech['resource']}»: {left - 1}. (Вне боя зелье не усваивается.)"
+    )
     await cb.message.reply(
         f"⚡ <b>{esc(c['name'])}</b> активирует классовую механику Пути: <b>{esc(p_mech['name'])}</b>!\n"
-        f"{effect_text}\n"
-        f"🧪 Метод отыгрыша: переваривание зелья <b>{dig}%</b> (осталось зарядов: {left - 1})."
+        f"{effect_text}\n{dig_line}"
     )
     await cb.answer()
 
@@ -557,8 +569,10 @@ async def cb_cast_ability(cb: CallbackQuery):
         lines_summon = ""
     if combat and sk["action"] in ("bonus", "reaction") and int(sk.get("slot_rank", 0)) > 0:
         uses[cd_key] = int(combat["round"]) + lotm.COOLDOWN_ROUNDS_SUB
-    # Переваривание зелья: +5% за каждое применённое умение
-    new_dig = min(100, int(c.get("digestion") or 0) + 5)
+    # Переваривание зелья: +2% ТОЛЬКО за применение умения в активном бою
+    new_dig = int(c.get("digestion") or 0)
+    if combat is not None:
+        new_dig = min(100, new_dig + 2)
     await db.update_character(owner_id, lair_uses=uses, digestion=new_dig)
 
     lines = [f"✨ <b>{esc(c['name'])}</b> применяет <b>{esc(sk['name'])}</b>"]

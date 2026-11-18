@@ -83,6 +83,13 @@ def ac_bonus(c: dict | None) -> int:
     if not c:
         return 0
     bonus = int(perk_of(c).get("ac_bonus", 0)) + int(feat_mech(c).get("ac_bonus", 0))
+    # Экипированные Запечатанные Артефакты (бонус Защиты)
+    for art in (c.get("artifacts") or []):
+        if isinstance(art, dict) and art.get("equipped", True):
+            try:
+                bonus += int(art.get("ac_bonus", 0))
+            except (TypeError, ValueError):
+                pass
     # Anti-Stunlock: пока действует окно иммунитета к жёсткому контролю, Защита −2
     if c.get("lair_uses", {}).get("cc_immunity", 0):
         bonus -= 2

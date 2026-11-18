@@ -84,6 +84,8 @@ def _card(c: dict) -> str:
     cur = table.get(seq, {})
     nxt_seq = seq - 1
     nxt = table.get(nxt_seq)
+    seq_title = lotm.SEQUENCE_TITLES.get(c["pathway"], {}).get(seq, f"Посл. {seq}")
+    nxt_title = lotm.SEQUENCE_TITLES.get(c["pathway"], {}).get(nxt_seq, f"Посл. {nxt_seq}")
     lines = [
         f"🔮 <b>{esc(c['name'])}</b> — {esc(lotm.PATHWAYS[c['pathway']]['name'])}",
         f"Текущая ступень: <b>Посл. {seq} «{esc(seq_title)}»</b> (тир {cur.get('tier')}, мастерство + {rules.sequence_prof_bonus(seq)})",
@@ -196,11 +198,11 @@ async def cb_do(cb: CallbackQuery, state: FSMContext):
         await cb.answer("Анкета не найдена.", show_alert=True)
         return
 
-    old_seq = int(c["sequence"])
-    new_seq = old_seq - 1
-    if new_seq >= old_seq or old_seq > 9 or old_seq < 1:
-        await cb.answer("Некорректная последовательность.", show_alert=True)
-        return
+    dig = int(c.get("digestion") or 0)
+    rank, count = PROMOTE_SLOT_COST.get(new_seq, (lotm.sequence_table()[new_seq]["tier"], 0))
+    if dig >= 100:
+        count = max(1, count // 2)
+    have = _slots_left(c, rank)
 
     if dig < 100 and not is_ritual_admin:
         await cb.answer(
@@ -211,43 +213,14 @@ async def cb_do(cb: CallbackQuery, state: FSMContext):
         return
     if not ADMIN_ONLY_SEQUENCES and not is_ritual_admin:
         await state.clear()
-        await _do_promote(cb, state, int(uid), new_seq)
+        await _apply_promote(cb, state, c, new_seq, c["pathway"], rank, count)
         return
-
-    rank, count = PROMOTE_SLOT_COST.get(new_seq, (lotm.sequence_table()[new_seq]["tier"], 0))
-    if dig >= 100:
-        count = max(1, count // 2)
-    have = _slots_left(c, rank)
     if have < count and not is_ritual_admin:
         await cb.answer(
             f"Не хватает ячеек: нужно {count} ранга Р{rank}, у тебя {have}. "
             "Отдохни (/rest long) и попробуй снова.",
             show_alert=True,
         )
-        return
-
-    if not is_ritual_admin:
-        await state.clear()
-        await _do_promote(cb, state, int(uid), new_seq)
-        return
-
-    rank, count = PROMOTE_SLOT_COST.get(new_seq, (lotm.sequence_table()[new_seq]["tier"], 0))
-    # Переваривание зелья: при digestion >= 100 цена в ячейках снижается вдвое
-    dig = int(c.get("digestion") or 0)
-    if dig >= 100:
-        count = max(1, count // 2)
-    have = _slots_left(c, rank)
-    if have < count and not is_ritual_admin:
-        await cb.answer(
-            f"Не хватает ячеек: нужно {count} ранга Р{rank}, у тебя {have}. "
-            "Отдохни (/rest long) и попробуй снова.",
-            show_alert=True,
-        )
-        return
-
-    if not is_ritual_admin:
-        await state.clear()
-        await _do_promote(cb, state, int(uid), new_seq)
         return
 
     req_kb = InlineKeyboardMarkup(inline_keyboard=[[
@@ -272,9 +245,6 @@ async def cb_do(cb: CallbackQuery, state: FSMContext):
         "Как только ритуал одобрят, тебе придёт уведомление.",
     )
     await cb.answer("Запрос отправлен")
-    return
-
-    await _apply_promote(cb, state, c, new_seq, c["pathway"], rank, count)
 
 @router.callback_query(Promote.choose_path, F.data.startswith("wof:"))
 async def cb_wof_choice(cb: CallbackQuery, state: FSMContext):

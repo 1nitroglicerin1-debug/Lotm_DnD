@@ -15,7 +15,7 @@ from contextlib import closing
 import config
 
 DEFAULT_STATS = {"str": 10, "dex": 10, "con": 10, "int": 10, "wis": 10, "cha": 10}
-JSON_FIELDS = {"stats", "skills", "saves", "conditions", "spell_slots", "pathway_choices", "feats", "lair_uses", "recorded_skills"}
+JSON_FIELDS = {"stats", "skills", "saves", "conditions", "spell_slots", "pathway_choices", "feats", "lair_uses", "recorded_skills", "artifacts", "inventory"}
 EDITABLE = {
     "username", "name", "race", "char_class", "level", "stats", "skills", "saves",
     "bio", "photo_id", "status", "reject_reason",
@@ -23,6 +23,7 @@ EDITABLE = {
     "faction", "faction_perk", "pathway", "sequence", "start_sequence", "pathway_choices", "feats",
     "lair_uses",
     "sanity", "digestion", "class_resource", "recorded_skills",
+    "artifacts", "inventory",
 }
 
 SCHEMA = [
@@ -135,6 +136,7 @@ SCHEMA = [
         daily_day      INTEGER NOT NULL DEFAULT 0,
         vip_until      INTEGER NOT NULL DEFAULT 0,
         fate_tokens    INTEGER NOT NULL DEFAULT 2,
+        fate_seal_used INTEGER NOT NULL DEFAULT 0,
         gm_mode        TEXT    NOT NULL DEFAULT 'canon',
         chapter        INTEGER NOT NULL DEFAULT 1,
         location       TEXT    NOT NULL DEFAULT 'Тинген, улица Железного Креста',
@@ -145,10 +147,18 @@ SCHEMA = [
         history_json   TEXT    NOT NULL DEFAULT '[]',
         options_json   TEXT    NOT NULL DEFAULT '[]',
         last_fail_json TEXT    NOT NULL DEFAULT '{}',
-        enemy_json     TEXT    NOT NULL DEFAULT '{}',
+        enemy_json     TEXT NOT NULL DEFAULT '{}',
+        consequences_json TEXT NOT NULL DEFAULT '[]',
         referred_by    INTEGER NOT NULL DEFAULT 0,
         referrals_count INTEGER NOT NULL DEFAULT 0,
         updated_at     INTEGER NOT NULL
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS server_daily_usage (
+        day_int     INTEGER PRIMARY KEY,
+        free_turns  INTEGER NOT NULL DEFAULT 0,
+        paid_turns  INTEGER NOT NULL DEFAULT 0
     );
     """,
     """
@@ -157,8 +167,15 @@ SCHEMA = [
         user_id            INTEGER NOT NULL,
         pack_id            TEXT    NOT NULL,
         stars_amount       INTEGER NOT NULL,
-        telegram_charge_id TEXT,
+        telegram_charge_id TEXT UNIQUE,
         created_at         INTEGER NOT NULL
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS player_logins (
+        user_id    INTEGER PRIMARY KEY,
+        last_seen  INTEGER NOT NULL,
+        login_days INTEGER NOT NULL DEFAULT 1
     );
     """,
 ]
@@ -202,7 +219,7 @@ def _decode(row: dict | None) -> dict | None:
         try:
             row[f] = json.loads(row[f])
         except (TypeError, ValueError):
-            row[f] = [] if f in ("saves", "conditions") else {}
+            row[f] = [] if f in ("saves", "conditions", "feats", "recorded_skills", "artifacts", "inventory") else {}
     stats = dict(DEFAULT_STATS)
     if isinstance(row["stats"], dict):
         stats.update({k: int(v) for k, v in row["stats"].items() if k in DEFAULT_STATS})
@@ -219,6 +236,10 @@ def _decode(row: dict | None) -> dict | None:
         row["pathway_choices"] = {}
     if not isinstance(row.get("recorded_skills"), list):
         row["recorded_skills"] = []
+    if not isinstance(row.get("artifacts"), list):
+        row["artifacts"] = []
+    if not isinstance(row.get("inventory"), list):
+        row["inventory"] = []
     for f in ("sanity", "digestion", "class_resource"):
         try:
             row[f] = int(row.get(f) if row.get(f) is not None else (100 if f == "sanity" else 0))
@@ -280,6 +301,8 @@ _CHAR_EXTRA_COLUMNS = {
     "digestion": "INTEGER NOT NULL DEFAULT 0",
     "class_resource": "INTEGER NOT NULL DEFAULT 0",
     "recorded_skills": "TEXT NOT NULL DEFAULT '[]'",
+    "artifacts": "TEXT NOT NULL DEFAULT '[]'",
+    "inventory": "TEXT NOT NULL DEFAULT '[]'",
 }
 
 
@@ -312,14 +335,17 @@ async def _migrate_columns() -> None:
 _STORY_EXTRA_COLUMNS = {
     "daily_day": "INTEGER NOT NULL DEFAULT 0",
     "fate_tokens": "INTEGER NOT NULL DEFAULT 2",
+    "fate_seal_used": "INTEGER NOT NULL DEFAULT 0",
     "gm_mode": "TEXT NOT NULL DEFAULT 'canon'",
     "current_arc": "TEXT NOT NULL DEFAULT ''",
     "summary": "TEXT NOT NULL DEFAULT ''",
     "clues_json": "TEXT NOT NULL DEFAULT '[]'",
     "npcs_json": "TEXT NOT NULL DEFAULT '[]'",
     "last_fail_json": "TEXT NOT NULL DEFAULT '{}'",
+    "consequences_json": "TEXT NOT NULL DEFAULT '[]'",
     "referred_by": "INTEGER NOT NULL DEFAULT 0",
     "referrals_count": "INTEGER NOT NULL DEFAULT 0",
+    "notified_low_turns": "INTEGER NOT NULL DEFAULT 0",
 }
 
 
@@ -741,6 +767,7 @@ def _decode_session(row: dict | None) -> dict | None:
         ("options_json", []),
         ("last_fail_json", {}),
         ("enemy_json", {}),
+        ("consequences_json", []),
     ):
         try:
             val = json.loads(row.get(k) or ("{}" if isinstance(default, dict) else "[]"))
@@ -748,6 +775,7 @@ def _decode_session(row: dict | None) -> dict | None:
         except (TypeError, ValueError):
             row[k[:-5]] = dict(default) if isinstance(default, dict) else list(default)
     row["is_vip"] = int(row.get("vip_until") or 0) > int(time.time())
+    row["fate_seal_used"] = bool(row.get("fate_seal_used", 0))
     if not row.get("gm_mode"):
         row["gm_mode"] = "canon"
     return row
@@ -765,10 +793,9 @@ async def get_story_session(user_id: int) -> dict:
         )
         row = await _q("SELECT * FROM story_sessions WHERE user_id=?", (user_id,), "one")
     s = _decode_session(row)
-    # Автоматическое ежедневное пополнение ходов (Fair-Use: 80 для VIP, 12 для обычных игроков)
+    # Ежедневное пополнение: бесплатным игрокам доводим баланс до 3 (не копится выше 3)
     if int(s.get("daily_day") or 0) < today:
-        daily_cap = config.VIP_DAILY_TURNS if s["is_vip"] else config.FREE_DAILY_TURNS
-        new_turns = max(int(s.get("turns_left") or 0), daily_cap)
+        new_turns = max(int(s.get("turns_left") or 0), config.FREE_DAILY_TURNS)
         await _q(
             "UPDATE story_sessions SET turns_left=?, daily_day=?, updated_at=? WHERE user_id=?",
             (new_turns, today, int(time.time()), user_id),
@@ -778,13 +805,49 @@ async def get_story_session(user_id: int) -> dict:
     return s
 
 
+async def try_consume_turn(user_id: int, is_dev: bool = False) -> tuple[bool, str]:
+    """Атомарно проверяет и списывает 1 ход ИИ-Мастера с защитой глобального бесплатного бюджета."""
+    if is_dev:
+        return True, "dev"
+    s = await get_story_session(user_id)
+    turns = int(s.get("turns_left") or 0)
+    if turns <= 0:
+        return False, "no_turns"
+
+    today = _today_int()
+    is_paid_user = bool(s.get("is_vip")) or turns > config.FREE_DAILY_TURNS
+
+    if not is_paid_user:
+        row = await _q("SELECT free_turns FROM server_daily_usage WHERE day_int=?", (today,), "one")
+        used_today = int(row["free_turns"]) if row else 0
+        if used_today >= config.GLOBAL_FREE_DAILY_CAP:
+            return False, "global_cap_reached"
+        await _q(
+            "INSERT INTO server_daily_usage (day_int, free_turns, paid_turns) VALUES (?, 1, 0) "
+            "ON CONFLICT(day_int) DO UPDATE SET free_turns = free_turns + 1",
+            (today,),
+        )
+    else:
+        await _q(
+            "INSERT INTO server_daily_usage (day_int, free_turns, paid_turns) VALUES (?, 0, 1) "
+            "ON CONFLICT(day_int) DO UPDATE SET paid_turns = paid_turns + 1",
+            (today,),
+        )
+
+    await _q(
+        "UPDATE story_sessions SET turns_left = MAX(0, turns_left - 1), updated_at = ? WHERE user_id = ?",
+        (int(time.time()), user_id),
+    )
+    return True, "ok"
+
+
 async def update_story_session(user_id: int, **fields) -> dict:
     allowed = {
-        "lang", "turns_left", "daily_day", "vip_until", "fate_tokens", "gm_mode",
+        "lang", "turns_left", "daily_day", "vip_until", "fate_tokens", "fate_seal_used", "gm_mode",
         "chapter", "location", "current_arc", "summary",
-        "clues", "npcs", "history", "options", "last_fail", "enemy",
+        "clues", "npcs", "history", "options", "last_fail", "enemy", "consequences",
     }
-    json_keys = {"clues", "npcs", "history", "options", "last_fail", "enemy"}
+    json_keys = {"clues", "npcs", "history", "options", "last_fail", "enemy", "consequences"}
     cols, vals = [], []
     for k, v in fields.items():
         if k not in allowed:
@@ -812,6 +875,9 @@ async def add_turns(user_id: int, amount: int) -> dict:
 
 async def add_fate_tokens(user_id: int, amount: int) -> dict:
     await get_story_session(user_id)
+    # ВРЕМЕННО: печати не тратятся при UNLIMITED_FATE (но и не начисляются сверх)
+    if getattr(config, "UNLIMITED_FATE", False) and amount < 0:
+        return await get_story_session(user_id)
     await _q(
         "UPDATE story_sessions SET fate_tokens = MAX(0, fate_tokens + ?), updated_at = ? WHERE user_id = ?",
         (int(amount), int(time.time()), user_id),
@@ -819,16 +885,26 @@ async def add_fate_tokens(user_id: int, amount: int) -> dict:
     return await get_story_session(user_id)
 
 
-async def activate_vip(user_id: int, days: int = 30) -> dict:
+async def activate_vip(user_id: int, days: int = 30, pool: int = 450) -> dict:
+    """Активирует/продлевает VIP и начисляет +pool ходов единоразово (строгий месячный пул)."""
     s = await get_story_session(user_id)
     now = int(time.time())
     base = max(now, int(s.get("vip_until") or 0))
     new_until = base + int(days) * 86400
-    new_turns = max(int(s.get("turns_left") or 0), config.VIP_DAILY_TURNS)
+    new_turns = int(s.get("turns_left") or 0) + int(pool)
     return await update_story_session(user_id, vip_until=new_until, turns_left=new_turns)
 
 
 async def log_payment(user_id: int, pack_id: str, stars_amount: int, charge_id: str) -> None:
+    """Идемпотентная запись платежа: повторный successful_payment с тем же charge_id игнорируется."""
+    if charge_id:
+        row = await _q(
+            "SELECT id FROM payments_log WHERE telegram_charge_id=?",
+            (charge_id,),
+            "one",
+        )
+        if row:
+            return
     await _q(
         "INSERT INTO payments_log (user_id, pack_id, stars_amount, telegram_charge_id, created_at) "
         "VALUES (?, ?, ?, ?, ?)",
@@ -859,3 +935,70 @@ async def apply_referral(new_user_id: int, ref_id: int) -> bool:
         (now, ref_id),
     )
     return True
+
+
+# --------------------------------------------------------------------------
+# Хроника подвигов (статистика бросков + посещения для ретеншна)
+# --------------------------------------------------------------------------
+
+async def roll_stats(user_id: int) -> dict:
+    """Агрегированная статистика бросков игрока: криты, фамблы, лучший бросок."""
+    try:
+        rows = await _q(
+            "SELECT command, total, natural FROM roll_log "
+            "WHERE user_id=? AND total IS NOT NULL ORDER BY id DESC LIMIT 500",
+            (user_id,),
+            "all",
+        )
+    except Exception:
+        return {"total_rolls": 0, "nat20": 0, "nat1": 0, "best": 0}
+    checks = [r for r in rows if r.get("command") in ("check", "save", "init")]
+    nat20 = sum(1 for r in checks if int(r.get("natural") or 0) == 20)
+    nat1 = sum(1 for r in checks if int(r.get("natural") or 0) == 1)
+    best = max((int(r.get("total") or 0) for r in rows), default=0)
+    return {
+        "total_rolls": len(rows),
+        "checks": len(checks),
+        "nat20": nat20,
+        "nat1": nat1,
+        "best": best,
+    }
+
+
+async def upsert_login(user_id: int) -> None:
+    """Отмечает дату последнего визита игрока (для расчёта ретеншна и напоминаний)."""
+    now = int(time.time())
+    try:
+        await _q(
+            "INSERT INTO player_logins (user_id, last_seen, login_days) VALUES (?, ?, 1) "
+            "ON CONFLICT(user_id) DO UPDATE SET last_seen=?, login_days=login_days+1",
+            (user_id, now, now),
+        )
+    except Exception:
+        pass
+
+
+async def get_login(user_id: int) -> dict | None:
+    try:
+        return await _q("SELECT * FROM player_logins WHERE user_id=?", (user_id,), "one")
+    except Exception:
+        return None
+
+
+async def idle_players(days: int = 3, limit: int = 200) -> list[dict]:
+    """Игроки с созданным персонажем, не заходившие N дней (для мягких напоминаний)."""
+    cutoff = int(time.time()) - days * 86400
+    try:
+        rows = await _q(
+            "SELECT s.user_id, s.turns_left, COALESCE(p.last_seen, 0) AS last_seen "
+            "FROM story_sessions s "
+            "JOIN characters c ON c.user_id = s.user_id "
+            "LEFT JOIN player_logins p ON p.user_id = s.user_id "
+            "WHERE (p.last_seen IS NULL OR p.last_seen < ?) AND s.turns_left > 0 "
+            "ORDER BY s.updated_at DESC LIMIT ?",
+            (cutoff, limit),
+            "all",
+        )
+    except Exception:
+        return []
+    return [dict(r) for r in rows]

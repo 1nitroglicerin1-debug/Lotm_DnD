@@ -46,13 +46,30 @@ def make_fsm_path() -> str:
 
 
 LLM_API_KEY: str = os.getenv("LLM_API_KEY", "").strip()
-LLM_API_URL: str = os.getenv("LLM_API_URL", "https://api.deepseek.com/v1/chat/completions").strip()
-LLM_MODEL: str = os.getenv("LLM_MODEL", "deepseek-chat").strip()
+LLM_API_URL: str = os.getenv("LLM_API_URL", "https://api.proxyapi.ru/v1/chat/completions").strip()
+LLM_MODEL: str = os.getenv("LLM_MODEL", "deepseek/deepseek-v4.1-flash-1017").strip()
 TRIBUTE_LINK: str = os.getenv("TRIBUTE_LINK", "").strip()
 
-WELCOME_TURNS = 15       # Разовый стартовый пакет при создании первого персонажа
-FREE_DAILY_TURNS = 3     # Ежедневный бесплатный минимум (не копится выше 3)
-VIP_DAILY_TURNS = 35     # Ежедневный лимит для VIP-подписчиков
+WELCOME_TURNS = 15           # Разовый стартовый пакет при регистрации
+FREE_DAILY_TURNS = 3         # Ежедневный минимум бесплатного игрока (не копится выше 3)
+VIP_MONTHLY_POOL = 450       # Строгий месячный пул ходов при покупке VIP «Святилище» (390 ⭐️)
+VIP_PLUS_MONTHLY_POOL = 800  # Пул для тарифа «Святилище+» (590 ⭐️)
+GLOBAL_FREE_DAILY_CAP: int = int(os.getenv("GLOBAL_FREE_DAILY_CAP", "1500"))  # Макс. бесплатных ИИ-ходов в сутки на весь сервер
+LAVA_WEBHOOK_SECRET = os.getenv("LAVA_WEBHOOK_SECRET", "").strip()
+
+# DEV / GOD-MODE: включён по умолчанию для тестов, отключается одной переменной в .env
+DEV_MODE: bool = os.getenv("DEV_MODE", "1").strip() in ("1", "true", "yes")
+
+
+def is_dev(user_id: int | None) -> bool:
+    """True только для администраторов из ADMIN_IDS или локального тестового аккаунта при DEV_MODE=1."""
+    if user_id is None:
+        return False
+    uid = int(user_id)
+    if uid in ADMIN_IDS:
+        return True
+    return DEV_MODE and uid == 664506059
+
 
 WEB_HOST: str = os.getenv("WEB_HOST", "0.0.0.0").strip()
 WEB_PORT: int = int(os.getenv("WEB_PORT", "8000"))

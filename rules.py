@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import random
 import re
+import time
 from dataclasses import dataclass, field
 
 import lotm_data as lotm
@@ -215,41 +216,118 @@ def proficiency_bonus(level: int) -> int:
     return 2 + (int(level) - 1) // 4
 
 
-def skill_total(char: dict, skill_key: str) -> int:
-    _, ab, _ = SKILLS[skill_key]
-    mult = int(char["skills"].get(skill_key, 0))
-    total = ability_mod(char["stats"][ab]) + effective_prof_bonus(char) * mult
+def skill_breakdown(char: dict, skill_key: str) -> list[tuple[str, int]]:
+    """Возвращает полный список слагаемых бонуса навыка: [(название_источника, значение), ...]."""
+    if skill_key not in SKILLS:
+        skill_key = "perception"
+    skill_name, ab, _ = SKILLS[skill_key]
+    stats = char.get("stats") or {}
+    score = int(stats.get(ab, 10))
+    mod = ability_mod(score)
+    parts: list[tuple[str, int]] = [(f"{ABILITIES[ab][0]} ({score})", mod)]
+
+    pb = effective_prof_bonus(char)
+    mult = int((char.get("skills") or {}).get(skill_key, 0))
+    if mult == 1:
+        parts.append((f"Владение навыком (Посл. {char.get('sequence', 9)})", pb))
+    elif mult >= 2:
+        parts.append(("Компетенция ★ (×2)", pb * 2))
+
+    # Пассивные бонусы веток Пути (сбалансированные под Bounded Accuracy)
     path = lotm.PATHWAY_ALIASES.get(char.get("pathway") or "", char.get("pathway") or "")
     seq = int(char.get("sequence") or 9)
     choices = char.get("pathway_choices") or {}
     ch9 = str(choices.get("9") or choices.get(9) or "a").lower()
     ch8 = str(choices.get("8") or choices.get(8) or "a").lower()
+
     if path == "white_tower" and seq <= 9 and ch9 == "a":
-        total += 2
+        parts.append(("Пассивка «Энциклопедическая память»", 2))
     if path == "prisoner" and seq <= 9 and ch9 == "a" and ab == "dex":
-        total += 3
+        parts.append(("Пассивка «Тихая поступь»", 2))
     if path == "door" and seq <= 9 and ch9 == "b" and ab == "int":
-        total += 2
+        parts.append(("Пассивка «Знание рун»", 2))
     if path == "arbiter" and seq <= 8 and ch8 == "a" and skill_key == "perception":
-        total += 4
+        parts.append(("Пассивка «Бдительный взор»", 2))
     if path == "red_priest" and seq <= 9 and ch9 == "a" and skill_key == "survival":
-        total += 3
+        parts.append(("Пассивка «Знание повадок»", 2))
     if path == "visionary" and seq <= 9 and ch9 == "b" and skill_key == "insight":
-        total += 4
+        parts.append(("Пассивка «Абсолютная эмпатия»", 2))
     if path == "hermit" and seq <= 9 and ch9 == "a" and skill_key == "arcana":
-        total += 2
+        parts.append(("Пассивка «Глаз тайновидца»", 2))
+
+    # Бонус Происхождения (Background)
     bg = lotm.BACKGROUNDS.get(char.get("faction") or "")
     if bg and skill_key in bg.get("check_bonus", {}):
-        total += int(bg["check_bonus"][skill_key])
-    return total
+        b_val = int(bg["check_bonus"][skill_key])
+        if b_val:
+            parts.append((f"Происхождение «{bg['name'].split()[-1]}»", b_val))
+
+    # Экипированные Запечатанные Артефакты (+ к конкретному навыку или ко всем)
+    for art in (char.get("artifacts") or []):
+        if not isinstance(art, dict) or not art.get("equipped", True):
+            continue
+        if art.get("skill") == skill_key or art.get("skill") == "all":
+            try:
+                parts.append((f"Артефакт «{str(art.get('name', 'Реликвия'))[:18]}»", int(art.get("bonus", 0))))
+            except (TypeError, ValueError):
+                continue
+    # Рассудок ≤25% (Грань Потери Контроля): механическое влияние безумия
+    try:
+        sanity = int(char.get("sanity", 100))
+    except (TypeError, ValueError):
+        sanity = 100
+    if sanity <= 25:
+        mind_skills = ("persuasion", "performance", "investigation", "history", "medicine", "insight")
+        wild_skills = ("intimidation", "brawling", "arcana")
+        if skill_key in mind_skills:
+            parts.append(("Шёпот безумия (Рассудок ≤25%)", -2))
+        elif skill_key in wild_skills:
+            parts.append(("Искажение плоти (Рассудок ≤25%)", 2))
+
+    return parts
+
+
+def skill_total(char: dict, skill_key: str) -> int:
+    return sum(v for _, v in skill_breakdown(char, skill_key))
+
+
+SKILL_DOMAINS: dict[str, str] = {
+    "athletics": "физическая мощь, преодоление препятствий, выбивание дверей, прыжки",
+    "brawling": "рукопашный бой, захваты, болевые приёмы и баланс тела",
+    "acrobatics": "равновесие, уклонение, акробатика и бесшумные кульбиты",
+    "sleight_of_hand": "моторика пальцев, карманная кража, подмена предметов, тайники на теле",
+    "stealth": "маскировка в тенях, шаг без звука, избегание взглядов и слежка",
+    "firearms": "баллистика, огнестрел, траектории выстрелов и оружейная механика",
+    "arcana": "мистические законы, свойства зелий, потусторонние силы и тайные символы",
+    "history": "история эпох, древние цивилизации, династии и забытые хроники",
+    "investigation": "физические следы, давность событий, логика, реконструкция и дедукция",
+    "nature": "паровые механизмы, алхимические составы, яды и машинерия Тингена",
+    "religion": "церковные догматы семи богов, астрология, ритуалы и молитвы",
+    "animal_handling": "духовное зрение, цвета аур, призрачные эманации и звериное чутьё",
+    "insight": "микровыражения, скрытые эмоции, язык тела и оценка искренности людей",
+    "medicine": "анатомия, токсикология, характер ранений и физическое состояние",
+    "perception": "слух, зрение, запахи, обнаружение скрытых деталей в окружении",
+    "survival": "выслеживание следов, городские подворотни, пути отхода и опасности среды",
+    "deception": "ложь, блеф, сокрытие истинных мотивов и фальшивые эмоции",
+    "intimidation": "психологическое давление, подавление воли и угрозы",
+    "performance": "светский этикет, правила приличия высшего общества и актёрская игра",
+    "persuasion": "дипломатия, убеждение, переговоры и поиск компромиссов",
+}
 
 
 def get_passive_voices(char: dict) -> str:
-    """Возвращает 2 самых сильных навыка персонажа для пассивных вставок-подсказок в текст сцены."""
+    """Возвращает 2 самых сильных навыка персонажа с указанием их доменной сферы для пассивных вставок в текст сцены."""
     scored = [(k, skill_total(char, k)) for k in SKILLS]
     scored.sort(key=lambda x: x[1], reverse=True)
-    top = [f"{SKILLS[k][0]} ({val:+d})" for k, val in scored[:2] if val >= 4]
-    return ", ".join(top) if top else f"{SKILLS[scored[0][0]][0]} ({scored[0][1]:+d})"
+    top = [
+        f"{SKILLS[k][0]} ({val:+d} | домен: {SKILL_DOMAINS.get(k, '')})"
+        for k, val in scored[:2]
+        if val >= 4
+    ]
+    if top:
+        return "; ".join(top)
+    k0, v0 = scored[0]
+    return f"{SKILLS[k0][0]} ({v0:+d} | домен: {SKILL_DOMAINS.get(k0, '')})"
 
 
 def save_total(char: dict, ability: str) -> int:
@@ -370,6 +448,18 @@ def _make_test(
     return D20Result(title=title, mode=mode, rolls=rolls, used_idx=idx, parts=parts)
 
 
+def base_dc_for_sequence(seq: int) -> tuple[int, int, int]:
+    """Возвращает (Обычная_Сл, Сложная_Сл, Героическая_Сл) под текущую Последовательность (9->0)."""
+    s = int(seq or 9)
+    if s >= 8:
+        return (12, 14, 17)
+    if s >= 5:
+        return (14, 17, 20)
+    if s >= 3:
+        return (17, 20, 23)
+    return (20, 24, 28)
+
+
 def skill_check(char: dict, target: tuple[str, str], mode="normal", extra=0) -> D20Result:
     kind, key = target
     if kind == "skill":
@@ -387,16 +477,16 @@ def skill_check(char: dict, target: tuple[str, str], mode="normal", extra=0) -> 
             mode = "adv" if mode != "dis" else "normal"
         if mech.get("stealth_penalty") and kind == "skill" and key == "stealth":
             mode = "normal" if mode == "adv" else "dis"
-        if (
-            char.get("pathway") == "white_tower"
-            and int(char.get("sequence") or 9) <= 9
-            and str((char.get("pathway_choices") or {}).get("9", "")) == "a"
-        ):
-            extra = int(extra) + 2
         if perk_mech.get("skill_bonus"):
             extra = int(extra) + int(perk_mech["skill_bonus"])
     except Exception:
         pass
+    if kind == "skill":
+        parts = skill_breakdown(char, key)
+        if extra:
+            parts.append(("Доп. модификатор", int(extra)))
+        rolls, idx = roll_d20(mode)
+        return D20Result(title=title, mode=mode, rolls=rolls, used_idx=idx, parts=parts)
     return _make_test(char, title, ab, mult, mode, extra)
 
 
@@ -567,3 +657,550 @@ def rest_heal_amount(char: dict) -> int:
     stats = char.get("stats") or {}
     con_mod = ability_mod(stats.get("con", 10))
     return short_rest_heal(con_mod, char.get("faction"))
+
+
+# ============================================================================
+# РЕАЛЬНЫЙ ИНВЕНТАРЬ ПЕРСОНАЖА (INVENTORY & DELTA ENGINE)
+# ============================================================================
+
+INVENTORY_CATEGORIES = ("gear", "clue", "consumable", "currency")
+
+
+def normalize_item_name(name: str) -> str:
+    """Нормализует имя предмета для надёжного сопоставления без учёта регистра."""
+    return re.sub(r"\s+", " ", str(name or "").strip().lower())
+
+
+def guess_item_category(name: str, desc: str = "") -> str:
+    """Определяет категорию предмета по ключевым словам."""
+    text = f"{name} {desc}".lower()
+    if any(w in text for w in ("фунт", "солей", "соли", "пенс", "золот", "монет", "банкнот", "кошел", "капитал", "деньг", "наличн", "валют")):
+        return "currency"
+    if any(w in text for w in ("зель", "флакон", "соль", "порох", "спичк", "бинт", "экстракт", "мазь", "яд", "эликсир", "патрон", "пул", "лекарств", "сыворот")):
+        return "consumable"
+    if any(w in text for w in ("улик", "записк", "письм", "дневник", "блокнот", "книг", "отчет", "шифр", "документ", "фото", "конверт", "газет", "удостоверен", "пропуск", "чек", "вексель", "карт")):
+        return "clue"
+    return "gear"
+
+
+def apply_inventory_delta(
+    char_or_inv: dict | list,
+    add_list: list | None = None,
+    remove_list: list | None = None,
+) -> tuple[list[dict], dict[str, list[dict]]]:
+    """Применяет дельту инвентаря от ИИ-Мастера или игровой механики.
+
+    - Объединяет предметы с одинаковыми именами, увеличивая qty.
+    - Удаляет или уменьшает количество при расходе.
+    - Возвращает кортеж: (обновлённый список инвентаря, {'added': [...], 'removed': [...]}).
+    """
+    is_char = isinstance(char_or_inv, dict)
+    inv: list[dict] = list(char_or_inv.get("inventory") or []) if is_char else list(char_or_inv or [])
+
+    # Очистка и нормализация существующих записей
+    cleaned_inv: list[dict] = []
+    for item in inv:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        cleaned_inv.append({
+            "id": str(item.get("id") or f"inv_{int(time.time())}_{_rng.randint(1000, 9999)}"),
+            "name": name,
+            "qty": max(1, int(item.get("qty") or 1)),
+            "category": str(item.get("category") or guess_item_category(name, item.get("description", ""))).lower(),
+            "description": str(item.get("description") or f"Предмет: {name}").strip(),
+        })
+    inv = cleaned_inv
+
+    added_records: list[dict] = []
+    removed_records: list[dict] = []
+
+    # 1. Применение добавлений (inventory_add)
+    for raw in (add_list or []):
+        if isinstance(raw, str):
+            raw = {"name": raw.strip()}
+        if not isinstance(raw, dict):
+            continue
+        name = str(raw.get("name") or "").strip()
+        if not name:
+            continue
+        qty = max(1, int(raw.get("qty") or 1))
+        cat = str(raw.get("category") or "").strip().lower()
+        if cat not in INVENTORY_CATEGORIES:
+            cat = guess_item_category(name, raw.get("description", ""))
+        desc = str(raw.get("description") or "").strip()
+
+        norm_target = normalize_item_name(name)
+        existing = next((it for it in inv if normalize_item_name(it["name"]) == norm_target), None)
+        if existing:
+            existing["qty"] = int(existing.get("qty", 1)) + qty
+            if desc and (not existing.get("description") or existing["description"].startswith("Предмет:")):
+                existing["description"] = desc
+            added_records.append({
+                "id": existing["id"],
+                "name": existing["name"],
+                "qty": qty,
+                "category": existing.get("category", cat),
+                "description": existing.get("description", desc),
+            })
+        else:
+            new_item = {
+                "id": str(raw.get("id") or f"inv_{int(time.time())}_{_rng.randint(1000, 9999)}"),
+                "name": name,
+                "qty": qty,
+                "category": cat,
+                "description": desc or f"Предмет: {name}",
+            }
+            inv.append(new_item)
+            added_records.append(dict(new_item))
+
+    # 2. Применение удалений / трат (inventory_remove)
+    for raw in (remove_list or []):
+        if isinstance(raw, str):
+            raw = {"name": raw.strip()}
+        if not isinstance(raw, dict):
+            continue
+        name = str(raw.get("name") or "").strip()
+        if not name:
+            continue
+        qty_to_rem = max(1, int(raw.get("qty") or 1))
+        norm_target = normalize_item_name(name)
+
+        target_item = next((it for it in inv if normalize_item_name(it["name"]) == norm_target), None)
+        if not target_item:
+            target_item = next(
+                (it for it in inv if norm_target in normalize_item_name(it["name"]) or normalize_item_name(it["name"]) in norm_target),
+                None,
+            )
+
+        if target_item:
+            curr_qty = int(target_item.get("qty", 1))
+            actual_rem = min(curr_qty, qty_to_rem)
+            target_item["qty"] = curr_qty - qty_to_rem
+            removed_records.append({
+                "id": target_item["id"],
+                "name": target_item["name"],
+                "qty": actual_rem,
+                "category": target_item.get("category", "gear"),
+            })
+
+    # Оставляем только предметы с qty > 0
+    inv = [it for it in inv if int(it.get("qty", 0)) > 0]
+
+    if is_char:
+        char_or_inv["inventory"] = inv
+
+    return inv, {"added": added_records, "removed": removed_records}
+
+
+def starting_inventory(pathway: str, background_key: str) -> list[dict]:
+    """Генерирует богатый стартовый инвентарь на основе Предыстории и Пути Потустороннего."""
+    bg_key = (background_key or "detective").lower()
+    bg = lotm.BACKGROUNDS.get(bg_key, {})
+    gold_amount = int(bg.get("gold", 25))
+
+    items: list[dict] = [
+        {
+            "id": f"inv_gold_{_rng.randint(100, 999)}",
+            "name": f"{gold_amount} золотых фунтов",
+            "qty": gold_amount,
+            "category": "currency",
+            "description": "Чеканные золотые соверены Королевства Лоэн с профилем короля Георга III.",
+        }
+    ]
+
+    if bg_key == "detective":
+        items.extend([
+            {
+                "id": "inv_det_gun",
+                "name": "Револьвер .38 калибра",
+                "qty": 1,
+                "category": "gear",
+                "description": "Шестизарядный барабанный револьвер системы Смита с нарезным стволом.",
+            },
+            {
+                "id": "inv_det_lens",
+                "name": "Медная лупа сыщика",
+                "qty": 1,
+                "category": "gear",
+                "description": "Увеличительное стекло в тяжёлой оправе для криминалистического анализа мест преступлений.",
+            },
+            {
+                "id": "inv_det_notes",
+                "name": "Записная книжка сыщика и карандаш",
+                "qty": 1,
+                "category": "clue",
+                "description": "Карманный блокнот в кожаном переплёте для заметок, чертежей и улик.",
+            },
+        ])
+    elif bg_key == "noble":
+        items.extend([
+            {
+                "id": "inv_noble_ring",
+                "name": "Фамильный перстень с печатью",
+                "qty": 1,
+                "category": "gear",
+                "description": "Тяжёлое золотое кольцо с родовым гербом древней дворянской фамилии.",
+            },
+            {
+                "id": "inv_noble_cane",
+                "name": "Трость со скрытым клинком",
+                "qty": 1,
+                "category": "gear",
+                "description": "Лакированная эбеновая трость с набалдашником и спрятанной тонкой стальной шпагой.",
+            },
+            {
+                "id": "inv_noble_bill",
+                "name": "Банковский вексель Баклунда",
+                "qty": 1,
+                "category": "clue",
+                "description": "Ценная бумага с водяными знаками на предъявителя.",
+            },
+        ])
+    elif bg_key == "scholar":
+        items.extend([
+            {
+                "id": "inv_sch_dict",
+                "name": "Словарь древнего Гермеса",
+                "qty": 1,
+                "category": "clue",
+                "description": "Фолиант в тиснёной кожаной обложке с расшифровкой ритуальных символов и рун.",
+            },
+            {
+                "id": "inv_sch_pass",
+                "name": "Пропуск в закрытый архив",
+                "qty": 1,
+                "category": "clue",
+                "description": "Официальное разрешение ректората университета на работу со спецхраном древностей.",
+            },
+            {
+                "id": "inv_sch_glass",
+                "name": "Золотое пенсне",
+                "qty": 1,
+                "category": "gear",
+                "description": "Оптические линзы для чтения мелких манускриптов и изучения древних надписей.",
+            },
+        ])
+    elif bg_key == "smuggler":
+        items.extend([
+            {
+                "id": "inv_smug_picks",
+                "name": "Набор стальных отмычек",
+                "qty": 1,
+                "category": "gear",
+                "description": "Комплект тонких воровских щупов и воротка в кожаном футляре.",
+            },
+            {
+                "id": "inv_smug_knife",
+                "name": "Сапожный кинжал",
+                "qty": 1,
+                "category": "gear",
+                "description": "Узкое зазубренное лезвие из воронёной стали, спрятанное в голенище.",
+            },
+            {
+                "id": "inv_smug_box",
+                "name": "Свинцовая шкатулка",
+                "qty": 1,
+                "category": "gear",
+                "description": "Шкатулка со свинцовыми стенками, экранирующая духовное излучение потусторонних материалов.",
+            },
+        ])
+    elif bg_key == "veteran":
+        items.extend([
+            {
+                "id": "inv_vet_gun",
+                "name": "Армейский офицерский револьвер",
+                "qty": 1,
+                "category": "gear",
+                "description": "Надёжное крупнокалиберное оружие времён колониальных кампаний в Баламе.",
+            },
+            {
+                "id": "inv_vet_knuckle",
+                "name": "Траншейный кастет",
+                "qty": 1,
+                "category": "gear",
+                "description": "Тяжёлый латунный кастет с зазубринами для рукопашного боя.",
+            },
+            {
+                "id": "inv_vet_flask",
+                "name": "Фляга колониального рома",
+                "qty": 1,
+                "category": "consumable",
+                "description": "Обожжённая стальная фляга с крепким терпким алкоголем.",
+            },
+        ])
+    elif bg_key == "surgeon":
+        items.extend([
+            {
+                "id": "inv_surg_kit",
+                "name": "Хирургический саквояж со скальпелями",
+                "qty": 1,
+                "category": "gear",
+                "description": "Кожаный саквояж с набором стерильных зажимов, игл и скальпелей.",
+            },
+            {
+                "id": "inv_surg_chloroform",
+                "name": "Флакон с хлороформом",
+                "qty": 2,
+                "category": "consumable",
+                "description": "Летучее анестезирующее вещество для медицинских и экстренных ситуаций.",
+            },
+            {
+                "id": "inv_surg_salts",
+                "name": "Нюхательная соль",
+                "qty": 1,
+                "category": "consumable",
+                "description": "Резкий состав, мгновенно проясняющий помутнённое сознание и возвращающий рассудок.",
+            },
+        ])
+    elif bg_key == "acolyte":
+        items.extend([
+            {
+                "id": "inv_acol_dagger",
+                "name": "Серебряный ритуальный кинжал",
+                "qty": 1,
+                "category": "gear",
+                "description": "Клинок из чистого серебра для черчения духовных барьеров и направления духовности.",
+            },
+            {
+                "id": "inv_acol_mask",
+                "name": "Маска тайного собрания",
+                "qty": 1,
+                "category": "gear",
+                "description": "Гладкая маска с капюшоном, маскирующая черты лица и духовную ауру.",
+            },
+            {
+                "id": "inv_acol_candles",
+                "name": "Свечи из глубоководного жира",
+                "qty": 3,
+                "category": "consumable",
+                "description": "Ритуальные свечи с бледно-голубым пламенем для умиротворения духов.",
+            },
+        ])
+    elif bg_key == "watcher":
+        items.extend([
+            {
+                "id": "inv_watch_lantern",
+                "name": "Фонарь из шкуры монстра",
+                "qty": 1,
+                "category": "gear",
+                "description": "Тёмный фонарь с фокусированным лучом, пробивающим аномальный туман.",
+            },
+            {
+                "id": "inv_watch_blade",
+                "name": "Тяжёлый тесак дозорного",
+                "qty": 1,
+                "category": "gear",
+                "description": "Массивный закалённый клинок для разрубания плотных панцирей тварей ночи.",
+            },
+            {
+                "id": "inv_watch_salt",
+                "name": "Мешочек очищенной соли",
+                "qty": 2,
+                "category": "consumable",
+                "description": "Крупная ритуальная соль для изгнания низших духов и очищения порога.",
+            },
+        ])
+    elif bg_key == "broker":
+        items.extend([
+            {
+                "id": "inv_brok_watch",
+                "name": "Золотые карманные часы на цепочке",
+                "qty": 1,
+                "category": "gear",
+                "description": "Высокоточный часовой механизм баклундских мастеров с гравировкой.",
+            },
+            {
+                "id": "inv_brok_ledger",
+                "name": "Книга биржевых котировок",
+                "qty": 1,
+                "category": "clue",
+                "description": "Сводка акций колониальных синдикатов и пароходных компаний.",
+            },
+            {
+                "id": "inv_brok_pen",
+                "name": "Позолоченное перьевое перо",
+                "qty": 1,
+                "category": "gear",
+                "description": "Элегантное перо для быстрого подписания контрактов и долговых расписок.",
+            },
+        ])
+    else:
+        items.extend([
+            {
+                "id": "inv_def_journal",
+                "name": "Записная книжка и графитовый карандаш",
+                "qty": 1,
+                "category": "clue",
+                "description": "Карманный блокнот в плотной обложке для фиксации улик и расчётов.",
+            },
+        ])
+
+    has_matches = any("спичк" in it["name"].lower() for it in items)
+    if not has_matches:
+        items.append({
+            "id": "inv_matches_box",
+            "name": "Коробок влагостойких спичек",
+            "qty": 10,
+            "category": "consumable",
+            "description": "Надёжные серные спички фабрики Баклунда в просмоленной коробочке.",
+        })
+    has_salt = any("соль" in it["name"].lower() for it in items)
+    if not has_salt:
+        items.append({
+            "id": "inv_spirit_salt",
+            "name": "Мешочек духовной соли",
+            "qty": 1,
+            "category": "consumable",
+            "description": "Очищенная ритуальная соль для создания барьеров против злых духов.",
+        })
+
+    p_low = (pathway or "").lower()
+    path_item = None
+    if p_low in ("seer", "fool"):
+        path_item = {
+            "id": "inv_path_tarot",
+            "name": "Колода карт Таро",
+            "qty": 1,
+            "category": "gear",
+            "description": "Полная колода из 22 Старших и 56 Младших Арканов для прорицания и гадания на снах.",
+        }
+    elif p_low in ("apprentice", "door"):
+        path_item = {
+            "id": "inv_path_key",
+            "name": "Медный ключ ученика",
+            "qty": 1,
+            "category": "gear",
+            "description": "Универсальный ключ из сплава меди и звёздного песка, резонирующий с замками.",
+        }
+    elif p_low in ("marauder", "error"):
+        path_item = {
+            "id": "inv_path_gloves",
+            "name": "Тонкие перчатки Вора",
+            "qty": 1,
+            "category": "gear",
+            "description": "Перчатки из тонкой оленьей кожи, передающие малейшие вибрации механизмов.",
+        }
+    elif p_low in ("spectator", "visionary"):
+        path_item = {
+            "id": "inv_path_monocle",
+            "name": "Круглое стеклянное монокль",
+            "qty": 1,
+            "category": "gear",
+            "description": "Оптическое монокль для скрытного наблюдения за мимикой и зрачками собеседника.",
+        }
+    elif p_low in ("sailor", "tyrant"):
+        path_item = {
+            "id": "inv_path_compass",
+            "name": "Латунный морской компас",
+            "qty": 1,
+            "category": "gear",
+            "description": "Морской компас, стрелка которого реагирует на шторма и духовные возмущения.",
+        }
+    elif p_low in ("sleepless", "darkness"):
+        path_item = {
+            "id": "inv_path_dust",
+            "name": "Флакон со снотворной пыльцой",
+            "qty": 2,
+            "category": "consumable",
+            "description": "Вытяжка ночного цветка, погружающая в глубокий спокойный сон.",
+        }
+    elif p_low in ("corpse_collector", "death"):
+        path_item = {
+            "id": "inv_path_balm",
+            "name": "Бальзам нетления",
+            "qty": 1,
+            "category": "consumable",
+            "description": "Мазь с запахом мирры, маскирующая запах живой плоти от нежити.",
+        }
+    elif p_low in ("hunter", "red_priest"):
+        path_item = {
+            "id": "inv_path_trap",
+            "name": "Складной стальной капкан",
+            "qty": 1,
+            "category": "gear",
+            "description": "Карманный зубчатый капкан с пружиной мгновенного взведения.",
+        }
+    elif p_low in ("assassin", "demoness"):
+        path_item = {
+            "id": "inv_path_poison",
+            "name": "Флакон с бесцветным ядом",
+            "qty": 2,
+            "category": "consumable",
+            "description": "Быстродействующий парализующий яд без вкуса и запаха.",
+        }
+    elif p_low in ("mystery_pryer", "hermit"):
+        path_item = {
+            "id": "inv_path_tonic",
+            "name": "Успокаивающий травяной тоник",
+            "qty": 2,
+            "category": "consumable",
+            "description": "Густой горький отвар, снимающий шум и навязчивые слуховые галлюцинации.",
+        }
+    elif p_low in ("warrior", "twilight_giant"):
+        path_item = {
+            "id": "inv_path_stone",
+            "name": "Точильный камень оружейника",
+            "qty": 1,
+            "category": "gear",
+            "description": "Мелкозернистый брусок для идеальной правки боевых лезвий.",
+        }
+    elif p_low in ("monster", "wheel_of_fortune"):
+        path_item = {
+            "id": "inv_path_coin",
+            "name": "Счастливая медная монета",
+            "qty": 1,
+            "category": "gear",
+            "description": "Монета неизвестной древней чеканки с идеально сбалансированным центром тяжести.",
+        }
+
+    if path_item:
+        items.append(path_item)
+
+    return items
+
+
+def format_pathway_mechanic(mech: dict | None, char: dict | None = None) -> dict:
+    """Форматирует описание классовой механики пути для отображения в UI (веб-интерфейс, досье).
+
+    Подставляет значение урона/кости вместо плейсхолдера {dmg} и устраняет неразрешённые шаблоны.
+    Если у способности указана кость (например, 2d6) и модификатор характеристики, формирует формулу.
+    """
+    if not mech or not isinstance(mech, dict):
+        return {}
+    res = dict(mech)
+    effect = str(res.get("effect") or "")
+    dice = str(res.get("dice") or "").strip()
+
+    stat_mod = 0
+    if char and isinstance(char, dict) and char.get("pathway"):
+        _, stat_mod = best_path_stat(char)
+
+    if dice:
+        if stat_mod > 0:
+            dmg_repr = f"{dice} + {stat_mod}"
+        elif stat_mod < 0:
+            dmg_repr = f"{dice} - {abs(stat_mod)}"
+        else:
+            dmg_repr = dice
+    elif stat_mod != 0:
+        dmg_repr = f"{stat_mod:+d}"
+    else:
+        dmg_repr = "урон"
+
+    if "{dmg}" in effect:
+        effect = effect.replace("{dmg}", dmg_repr)
+    # Защитная зачистка любых нераскрытых плейсхолдеров
+    effect = re.sub(r"\{([^}]+)\}", r"\1", effect)
+    # Замена битых символов замены UTF-8 (\ufffd) на длинное тире
+    effect = effect.replace("\ufffd", "—")
+    res["effect"] = effect
+
+    if "name" in res:
+        res["name"] = str(res["name"]).replace("\ufffd", "—")
+    if "resource" in res:
+        res["resource"] = str(res["resource"]).replace("\ufffd", "—")
+
+    return res

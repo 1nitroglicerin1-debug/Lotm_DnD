@@ -653,6 +653,7 @@ async def _finish(event, state: FSMContext, bot: Bot):
     bg_info = lotm.BACKGROUNDS.get(bg_key, lotm.BACKGROUNDS["detective"])
     for stat, bonus in bg_info["stat_bonus"].items():
         stats[stat] = min(30, stats.get(stat, 10) + int(bonus))
+    old = await db.get_character(uid)
     if old is None:
         await db.create_draft(uid, user.username)
         old = await db.get_character(uid) or {}
