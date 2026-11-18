@@ -185,7 +185,8 @@ async def on_successful_payment(message: Message):
     pack = PACKS.get(pack_id, PACKS["turns_40"])
     uid = message.from_user.id
 
-    await db.log_payment(uid, pack_id, sp.total_amount, sp.telegram_payment_charge_id)
+    if not await db.log_payment(uid, pack_id, sp.total_amount, sp.telegram_payment_charge_id):
+        return  # дубликат successful_payment (повторная доставка) — бонусы уже зачислены
     if pack["turns"] > 0:
         await db.add_turns(uid, pack["turns"])
     if pack["fate"] > 0:

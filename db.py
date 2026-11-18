@@ -895,8 +895,8 @@ async def activate_vip(user_id: int, days: int = 30, pool: int = 450) -> dict:
     return await update_story_session(user_id, vip_until=new_until, turns_left=new_turns)
 
 
-async def log_payment(user_id: int, pack_id: str, stars_amount: int, charge_id: str) -> None:
-    """Идемпотентная запись платежа: повторный successful_payment с тем же charge_id игнорируется."""
+async def log_payment(user_id: int, pack_id: str, stars_amount: int, charge_id: str) -> bool:
+    """Идемпотентная запись платежа. True = платёж новый (зачисляем бонусы), False = дубликат (игнорируем)."""
     if charge_id:
         row = await _q(
             "SELECT id FROM payments_log WHERE telegram_charge_id=?",
@@ -904,12 +904,13 @@ async def log_payment(user_id: int, pack_id: str, stars_amount: int, charge_id: 
             "one",
         )
         if row:
-            return
+            return False
     await _q(
         "INSERT INTO payments_log (user_id, pack_id, stars_amount, telegram_charge_id, created_at) "
         "VALUES (?, ?, ?, ?, ?)",
         (user_id, pack_id, int(stars_amount), charge_id, int(time.time())),
     )
+    return True
 
 
 async def apply_referral(new_user_id: int, ref_id: int) -> bool:

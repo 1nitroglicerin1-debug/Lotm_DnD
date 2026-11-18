@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import json
 import random
 import re
@@ -9,9 +11,9 @@ from typing import Any
 
 from aiogram import Bot
 from aiogram.types import LabeledPrice
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -894,9 +896,22 @@ async def api_create_invoice(req: InvoicePayload):
 
 
 @app.post("/api/webhook/lava")
-async def api_lava_webhook(payload: dict[str, Any]):
+async def api_lava_webhook(request: Request, payload: dict[str, Any]):
     """Обработчик вебхуков Lava.top (payment.success, subscription.recurring.payment.success, subscription.cancelled)."""
     event_type = str(payload.get("event") or payload.get("type") or "")
+    # Проверка HMAC-подписи запроса: секрет задаётся в .env (LAVA_WEBHOOK_SECRET).
+    # Подпись приходит в заголовке X-Signature (SHA256 от тела запроса + секрет).
+    if config.LAVA_WEBHOOK_SECRET:
+        raw_body = await request.body()
+        received_sig = request.headers.get("x-signature") or request.headers.get("x-lava-signature") or ""
+        expected_sig = hmac.new(
+            config.LAVA_WEBHOOK_SECRET.encode(), raw_body, hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(expected_sig, str(received_sig)):
+            return JSONResponse(status_code=403, content={"ok": False, "reason": "bad_signature"})
+    elif event_type in ("payment.success", "subscription.recurring.payment.success"):
+        # Секрет не настроен: зачисление платных товаров через вебхук запрещено (fail-closed).
+        return JSONResponse(status_code=503, content={"ok": False, "reason": "secret_not_configured"})
     # user_id передаётся в client_utm / custom_fields / email-префиксе при создании ссылки оплаты
     raw_uid = (
         payload.get("client_id")
@@ -909,6 +924,11 @@ async def api_lava_webhook(payload: dict[str, Any]):
     product_code = str(payload.get("product_id") or payload.get("offer_id") or "vip_450")
 
     if event_type in ("payment.success", "subscription.recurring.payment.success"):
+        # Шлюз идемпотентности: сначала фиксируем платёж в логе; при повторной
+        # доставке вебхука (тот же contract_id) зачисление не повторяется.
+        charge_id = str(payload.get("contract_id") or payload.get("payment_id") or "lava")
+        if not await db.log_payment(uid, f"lava:{product_code}", 0, charge_id):
+            return {"ok": True, "action": "duplicate_ignored"}
         if "plus" in product_code:
             await db.activate_vip(uid, days=30, pool=config.VIP_PLUS_MONTHLY_POOL)
             await db.add_fate_tokens(uid, 5)
@@ -918,7 +938,6 @@ async def api_lava_webhook(payload: dict[str, Any]):
         else:
             await db.add_turns(uid, 120)
             await db.add_fate_tokens(uid, 2)
-        await db.log_payment(uid, f"lava:{product_code}", 0, str(payload.get("contract_id") or "lava"))
         return {"ok": True, "action": "credited"}
 
     if event_type == "subscription.cancelled":
