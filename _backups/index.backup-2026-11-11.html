@@ -1,0 +1,2030 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0d0d11" />
+  <title>Повелитель Тайн — Архив Потустороннего</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Courier+Prime:wght@400;700&family=IM+Fell+English:ital@0;1&family=Special+Elite&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --soot: #0d0d11;
+      --smog: #141318;
+      --paper: #1a181e;
+      --paper-2: #201d24;
+      --well: #0f0e12;
+      --ink: #e6dcc6;
+      --ink-dim: #a5997f;
+      --ink-faint: #958a72;
+      --gold: #c29b38;
+      --gold-hi: #e2c26a;
+      --brass: #6b5524;
+      --brass-soft: rgba(194, 155, 56, 0.42);
+      --patina: #4d8676;
+      --patina-hi: #8fbcae;
+      --wax: #a3262a;
+      --wax-hi: #d4675e;
+      --on-gold: #17130a;
+      --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .82 0 0 0 0 .76 0 0 0 0 .6 0 0 0 .06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    .hidden { display: none !important; }
+    button, input, select { font: inherit; color: inherit; }
+    button { cursor: pointer; background: none; border: none; }
+
+    html { background: var(--soot); }
+    body {
+      min-height: 100vh;
+      padding-bottom: calc(112px + env(safe-area-inset-bottom));
+      color: var(--ink);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 17px;
+      line-height: 1.5;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+      background:
+        radial-gradient(1100px 480px at 50% -140px, rgba(194, 155, 56, 0.10), transparent 70%),
+        radial-gradient(900px 640px at -10% 100%, rgba(70, 78, 88, 0.20), transparent 70%),
+        radial-gradient(800px 600px at 110% 55%, rgba(66, 58, 76, 0.18), transparent 70%),
+        linear-gradient(180deg, var(--smog) 0%, var(--soot) 55%);
+      background-attachment: fixed;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background-image: var(--noise);
+    }
+
+    .wrap { position: relative; z-index: 1; width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 14px; }
+
+    /* ---------- Типографика ---------- */
+    .eyebrow {
+      display: block;
+      font-family: 'Courier Prime', monospace;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+    }
+    .title {
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      color: var(--gold-hi);
+      letter-spacing: 0.06em;
+      line-height: 1.2;
+    }
+    .title--xl { font-size: clamp(22px, 4vw, 30px); margin-top: 4px; }
+    .title--md { font-size: 15px; text-transform: uppercase; letter-spacing: 0.12em; margin-top: 3px; }
+    .title--sm { font-size: 12px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--gold); }
+    .italic-note { font-family: 'IM Fell English', Georgia, serif; font-style: italic; color: var(--ink-dim); font-size: 16px; }
+    .mono { font-family: 'Courier Prime', monospace; }
+
+    .fleuron {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 16px 0;
+      color: var(--gold);
+      font-size: 15px;
+      line-height: 1;
+    }
+    .fleuron::before, .fleuron::after {
+      content: "";
+      flex: 1;
+      height: 4px;
+      border-top: 1px solid var(--brass);
+      border-bottom: 1px solid var(--brass);
+    }
+
+    /* ---------- Панель: архивный лист с латунными углами ---------- */
+    .plate {
+      --corner: var(--gold);
+      position: relative;
+      padding: 20px;
+      background-color: var(--paper);
+      background-image: var(--noise);
+      border: 3px double var(--brass-soft);
+      border-radius: 2px;
+    }
+    .plate::after {
+      content: "";
+      position: absolute;
+      inset: -6px;
+      pointer-events: none;
+      background:
+        linear-gradient(var(--corner), var(--corner)) 0 0 / 16px 2px no-repeat,
+        linear-gradient(var(--corner), var(--corner)) 0 0 / 2px 16px no-repeat,
+        linear-gradient(var(--corner), var(--corner)) 100% 0 / 16px 2px no-repeat,
+        linear-gradient(var(--corner), var(--corner)) 100% 0 / 2px 16px no-repeat,
+        linear-gradient(var(--corner), var(--corner)) 0 100% / 16px 2px no-repeat,
+        linear-gradient(var(--corner), var(--corner)) 0 100% / 2px 16px no-repeat,
+        linear-gradient(var(--corner), var(--corner)) 100% 100% / 16px 2px no-repeat,
+        linear-gradient(var(--corner), var(--corner)) 100% 100% / 2px 16px no-repeat;
+    }
+    .plate--deep { background-color: var(--paper-2); }
+    .plate--blood { --corner: var(--wax); border-color: rgba(163, 38, 42, 0.7); }
+    .plate--tight { padding: 14px 16px; }
+    .plate-head { padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--brass); }
+
+    /* ---------- Кнопки ---------- */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 18px;
+      border: 1px solid var(--gold);
+      border-radius: 2px;
+      color: var(--gold-hi);
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      text-decoration: none;
+      transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .btn:hover { background: var(--gold); color: var(--on-gold); }
+    .btn:active { transform: translateY(1px); }
+    .btn--primary { width: 100%; padding: 15px 18px; border: 3px double var(--gold); }
+    .btn--block { width: 100%; }
+    .btn--sm { padding: 7px 12px; font-size: 11px; }
+    .btn--blood { border-color: #8e2a26; color: var(--wax-hi); }
+    .btn--blood:hover { background: #8e2a26; color: #f3e6d6; }
+    .btn--patina { border-color: var(--patina); color: var(--patina-hi); }
+    .btn--patina:hover { background: var(--patina); color: var(--soot); }
+    .btn:focus-visible, .choice:focus-visible, .tactic:focus-visible, .intent:focus-visible, .tab:focus-visible {
+      outline: 2px solid var(--gold-hi);
+      outline-offset: 2px;
+    }
+
+    /* ---------- HUD: латунные регистры и ртутные шкалы ---------- */
+    .hud {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      padding: 10px 0 12px;
+      background: #0f0e13;
+      border-bottom: 3px double var(--brass);
+    }
+    .hud-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+    .hud-id { min-width: 0; }
+    #hud-name {
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--gold-hi);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #hud-sub { font-family: 'Courier Prime', monospace; font-size: 12px; color: var(--ink-dim); }
+
+    .registers { display: flex; gap: 6px; flex-shrink: 0; }
+    .register {
+      min-width: 70px;
+      padding: 3px 8px 4px;
+      text-align: center;
+      background: var(--well);
+      border: 1px solid var(--brass);
+      border-radius: 2px;
+    }
+    .reg-label {
+      display: block;
+      font-family: 'Cinzel', serif;
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+    }
+    .reg-val { font-family: 'Courier Prime', monospace; font-weight: 700; font-size: 16px; line-height: 1.15; color: var(--gold-hi); }
+
+    .gauges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 10px; }
+    .gauge-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+    .gauge-name { font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); }
+    .gauge-val { font-family: 'Courier Prime', monospace; font-weight: 700; font-size: 12px; color: var(--ink); }
+    .gauge.is-low .gauge-val { color: var(--wax-hi); }
+    .tube {
+      position: relative;
+      height: 10px;
+      margin-top: 4px;
+      padding: 1px;
+      background: #08080a;
+      border: 1px solid var(--brass);
+    }
+    .tube::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(194, 155, 56, 0.2) calc(10% - 1px) 10%);
+    }
+    .tube-fill { height: 100%; width: 0; transition: width 0.5s ease; }
+    .tube-fill--hp { background: linear-gradient(180deg, #a83b33, #6a1c19); }
+    .tube-fill--san { background: linear-gradient(180deg, #78ab9c, #3b6a5d); }
+    .tube-fill--dig { background: linear-gradient(180deg, #dab655, #86661f); }
+
+    /* ---------- Основная раскладка ---------- */
+    main.wrap { padding-top: 22px; }
+    .stack > * + * { margin-top: 18px; }
+
+    .builder { max-width: 720px; margin: 0 auto 22px; }
+    .field + .field, .field-row { margin-top: 16px; }
+    .field-row { display: grid; gap: 16px; }
+    .field label {
+      display: block;
+      margin-bottom: 6px;
+      font-family: 'Cinzel', serif;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .input {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--well);
+      border: 1px solid var(--brass);
+      border-radius: 2px;
+      color: var(--ink);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 18px;
+      outline: none;
+      user-select: text;
+    }
+    .input::placeholder { color: var(--ink-faint); font-style: italic; }
+    .input:focus { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+    select.input {
+      appearance: none;
+      -webkit-appearance: none;
+      padding-right: 34px;
+      background-image:
+        linear-gradient(45deg, transparent 50%, var(--gold) 50%),
+        linear-gradient(135deg, var(--gold) 50%, transparent 50%);
+      background-position: calc(100% - 18px) 55%, calc(100% - 13px) 55%;
+      background-size: 5px 5px;
+      background-repeat: no-repeat;
+    }
+    option { background: var(--smog); color: var(--ink); }
+    .hint { margin-top: 6px; }
+
+    /* ---------- Вкладка сюжета ---------- */
+    .case-grid { display: grid; gap: 18px; }
+    .case-side > * + *, .case-main > * + * { margin-top: 18px; }
+
+    #story-loc { font-family: 'Cinzel', serif; font-weight: 700; font-size: 14px; letter-spacing: 0.1em; color: var(--gold-hi); margin-top: 4px; }
+    #story-arc { margin-top: 2px; }
+    .case-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+
+    .dice-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    #dice-skill { font-family: 'Cinzel', serif; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); }
+    .dice-body { display: flex; gap: 14px; align-items: center; margin-top: 12px; }
+    .die {
+      flex-shrink: 0;
+      width: 64px;
+      padding: 6px 0 4px;
+      text-align: center;
+      background: var(--well);
+      border: 3px double var(--brass-soft);
+    }
+    .die-label { display: block; font-family: 'Courier Prime', monospace; font-size: 10px; letter-spacing: 0.16em; color: var(--ink-faint); }
+    #dice-nat { font-family: 'Special Elite', 'Courier Prime', monospace; font-size: 30px; line-height: 1.1; color: var(--gold-hi); }
+    #dice-detail { font-size: 17px; line-height: 1.4; color: var(--ink); }
+    #btn-reroll { margin-top: 14px; }
+    .die--3d { position: relative; width: 160px; height: 160px; flex: 0 0 auto; }
+    .die--3d canvas { width: 160px; height: 160px; display: block; }
+    .die-nat { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 700 30px 'JetBrains Mono', monospace; color: #e6dec8; pointer-events: none; text-shadow: 0 0 8px rgba(0,0,0,0.7); }
+    .dice-breakdown { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+    .dice-line { font: 14px 'JetBrains Mono', monospace; color: #b9ae92; opacity: 0; transform: translateY(4px); animation: diceIn 0.35s ease forwards; }
+    .dice-line--total { color: #e2c26a; font-weight: 700; border-top: 1px solid #2E2A22; padding-top: 8px; margin-top: 4px; }
+    .dice-line--dig { color: #7fb98a; }
+    @keyframes diceIn { to { opacity: 1; transform: none; } }
+
+    .stamp {
+      flex-shrink: 0;
+      padding: 3px 10px 2px;
+      font-family: 'Special Elite', 'Courier Prime', monospace;
+      font-size: 14px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      border: 2px solid currentColor;
+      outline: 1px solid currentColor;
+      outline-offset: 2px;
+      transform: rotate(-4deg);
+      opacity: 0.92;
+    }
+    .stamp--ok { color: var(--patina-hi); }
+    .stamp--fail { color: #c9433a; }
+
+    .enemy-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid rgba(163, 38, 42, 0.5); }
+    #enemy-name { font-family: 'Cinzel', serif; font-weight: 700; font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--wax-hi); }
+    #enemy-desc { margin-top: 2px; font-size: 15px; }
+    #enemy-hp { flex-shrink: 0; padding: 3px 8px; font-family: 'Courier Prime', monospace; font-weight: 700; font-size: 13px; color: var(--wax-hi); border: 1px solid var(--wax); background: #1a0c0d; }
+    .tactics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tactic {
+      display: block;
+      width: 100%;
+      padding: 10px 12px;
+      text-align: left;
+      background: var(--well);
+      border: 1px solid var(--brass);
+      border-radius: 2px;
+      transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .tactic-name { display: block; font-family: 'Cinzel', serif; font-weight: 700; font-size: 12px; letter-spacing: 0.06em; color: var(--gold-hi); }
+    .tactic-note { display: block; margin-top: 2px; font-family: 'Courier Prime', monospace; font-size: 11px; color: var(--ink-faint); }
+    .tactic:hover { background: var(--gold); border-color: var(--gold); }
+    .tactic:hover .tactic-name, .tactic:hover .tactic-note { color: var(--on-gold); }
+    .tactic:hover .tactic-name { text-decoration: underline; text-underline-offset: 3px; }
+
+    .narrative { padding: 26px 22px; min-height: 320px; }
+    #story-text {
+      font-size: 19px;
+      line-height: 1.62;
+      color: #ebe2cd;
+      white-space: pre-line;
+      user-select: text;
+    }
+    #story-text.is-muted { font-style: italic; color: #b3a88f; }
+    #story-text:not(.is-muted)::first-letter {
+      float: left;
+      padding: 6px 10px 0 0;
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 3.2em;
+      line-height: 0.85;
+      color: var(--gold-hi);
+    }
+
+    .choices { display: flex; flex-direction: column; gap: 8px; }
+    .choice {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      width: 100%;
+      text-align: left;
+      background: var(--paper);
+      border: 1px solid var(--brass);
+      border-radius: 2px;
+      transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .choice-num {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 18px;
+      color: var(--gold);
+      border-right: 3px double var(--brass);
+    }
+    .choice-body { padding: 12px 14px; }
+    .choice-text { display: block; font-size: 18px; line-height: 1.4; color: var(--ink); }
+    .choice-meta { display: block; margin-top: 6px; font-family: 'Courier Prime', monospace; font-size: 12px; letter-spacing: 0.03em; color: var(--ink-dim); }
+    .choice:hover { background: var(--gold); border-color: var(--gold); }
+    .choice:hover .choice-num { color: var(--on-gold); border-right-color: rgba(23, 19, 10, 0.45); }
+    .choice:hover .choice-text { color: var(--on-gold); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+    .choice:hover .choice-meta { color: #3d3115; }
+    .choice:active { transform: translateY(1px); }
+
+    .intents { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 10px; border: 1px solid var(--brass); border-radius: 2px; }
+    .intent {
+      padding: 8px 4px;
+      font-family: 'Cinzel', serif;
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      transition: background-color 0.12s, color 0.12s;
+    }
+    .intent + .intent { border-left: 1px solid var(--brass); }
+    .intent:hover { color: var(--gold-hi); }
+    .intent.is-active { background: var(--gold); color: var(--on-gold); }
+    .free-row { display: flex; gap: 8px; margin-top: 10px; }
+    .free-row .input { flex: 1; min-width: 0; }
+
+    /* ---------- Лист героя ---------- */
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .stat { padding: 10px 6px 8px; text-align: center; background: var(--well); border: 1px solid var(--brass); }
+    .stat-k { display: block; font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); }
+    .stat-v { display: block; font-family: 'Courier Prime', monospace; font-weight: 700; font-size: 22px; line-height: 1.2; color: var(--gold-hi); }
+    .stat-m { display: block; font-family: 'Courier Prime', monospace; font-size: 12px; color: var(--ink-dim); }
+    .ability { padding: 8px 0 8px 12px; border-left: 2px solid var(--gold); font-size: 17px; line-height: 1.45; }
+    .ability + .ability { margin-top: 8px; }
+    .ability b { font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 0.04em; color: var(--gold-hi); }
+    .ability span { color: var(--ink-dim); }
+    .skills { display: grid; grid-template-columns: 1fr; gap: 2px 24px; }
+    .skill { display: flex; align-items: baseline; gap: 6px; padding: 3px 0; font-size: 17px; }
+    .skill-mark { width: 14px; font-family: 'Courier Prime', monospace; color: var(--gold); }
+    .skill-leader { flex: 1; border-bottom: 1px dotted var(--brass); transform: translateY(-4px); }
+    .skill-val { font-family: 'Courier Prime', monospace; font-weight: 700; color: var(--gold-hi); }
+    .text-link { font-family: 'Cormorant Garamond', serif; font-size: 15px; color: var(--ink-dim); text-decoration: underline; text-underline-offset: 3px; }
+    .text-link:hover { color: var(--gold-hi); }
+
+    /* ---------- Дело (дневник) ---------- */
+    .journal-grid { display: grid; gap: 20px; }
+    .journal-block h3 { margin-bottom: 8px; }
+    #j-principle { font-family: 'IM Fell English', Georgia, serif; font-style: italic; font-size: 19px; line-height: 1.55; color: var(--ink); }
+    .ledger-list { list-style: none; font-size: 17px; }
+    .ledger-list li { position: relative; padding: 4px 0 4px 20px; border-bottom: 1px dotted rgba(107, 85, 36, 0.6); }
+    .ledger-list li::before { content: "✶"; position: absolute; left: 0; top: 5px; font-size: 12px; color: var(--gold); }
+    .ledger-marks { color: #a53b3b; letter-spacing: 0.12em; font-size: 13px; margin-right: 2px; }
+    #j-summary { font-size: 17px; line-height: 1.6; color: var(--ink-dim); user-select: text; }
+
+    /* ---------- Святилище (прейскурант) ---------- */
+    .offer { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px dotted var(--brass); }
+    .offer:first-child { padding-top: 0; }
+    .offer-name { font-family: 'Cinzel', serif; font-weight: 700; font-size: 14px; letter-spacing: 0.06em; color: var(--gold-hi); }
+    .offer-desc { font-size: 16px; color: var(--ink-dim); }
+    .offer .btn { flex-shrink: 0; min-width: 96px; font-family: 'Courier Prime', monospace; letter-spacing: 0.06em; font-size: 13px; }
+    .offer--vip .offer-name { color: var(--wax-hi); }
+    .offer--vip .btn { border: 3px double var(--wax); color: var(--wax-hi); }
+    .offer--vip .btn:hover { background: var(--wax); color: #f3e6d6; }
+    #tribute-btn { margin-top: 18px; }
+
+    /* ---------- Нижняя навигация ---------- */
+    .tabbar {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      z-index: 40;
+      padding-bottom: env(safe-area-inset-bottom);
+      background: #0f0e13;
+      border-top: 3px double var(--brass);
+    }
+    .tabbar .wrap { display: grid; grid-template-columns: repeat(4, 1fr); }
+    .tab {
+      padding: 13px 4px 14px;
+      font-family: 'Cinzel', serif;
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      border-top: 2px solid transparent;
+      transition: color 0.12s, border-color 0.12s;
+    }
+    .tab:hover { color: var(--ink); }
+    .tab.is-active { color: var(--gold-hi); border-top-color: var(--gold); }
+
+    /* ---------- Десктоп: стол детектива ---------- */
+    @media (min-width: 700px) {
+      .field-row { grid-template-columns: 1fr 1fr; }
+      .stats { grid-template-columns: repeat(6, 1fr); }
+      .skills { grid-template-columns: 1fr 1fr; }
+      .journal-grid { grid-template-columns: 1fr 1fr; }
+      .journal-block--wide { grid-column: 1 / -1; }
+      #hud-name { font-size: 16px; }
+    }
+    @media (min-width: 960px) {
+      body { font-size: 18px; }
+      .wrap { padding: 0 28px; }
+      .case-grid { grid-template-columns: minmax(0, 1fr) 330px; gap: 26px; align-items: start; }
+      .case-side { grid-column: 2; grid-row: 1; position: sticky; top: 132px; }
+      .case-main { grid-column: 1; grid-row: 1; }
+      .narrative { padding: 36px 40px; min-height: 460px; }
+      #story-text { font-size: 21px; }
+      .choice-text { font-size: 19px; }
+      .sheet-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 26px; align-items: start; }
+      .sheet-grid > * + * { margin-top: 0; }
+      .shop-plate { max-width: 760px; margin: 0 auto; }
+    }
+    @media (max-width: 420px) {
+      .register { min-width: 58px; padding: 3px 6px; }
+      .gauges { gap: 8px; }
+      .gauge-name { font-size: 9px; letter-spacing: 0.08em; }
+      .plate { padding: 16px; }
+      .narrative { padding: 20px 16px; }
+      .choice { grid-template-columns: 44px 1fr; }
+    }
+    /* ---------- Point-Buy / Конструктор BG3 ---------- */
+    .pb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-top: 8px; }
+    .pb-item { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; }
+    .pb-name { font-family: 'Courier Prime', monospace; font-size: 12px; letter-spacing: 1px; color: var(--ink-dim); }
+    .pb-ctrl { display: flex; align-items: center; gap: 10px; }
+    .pb-ctrl button { width: 28px; height: 28px; border: 1px solid var(--brass-soft); border-radius: 6px; color: var(--gold-hi); font-weight: 700; }
+    .pb-ctrl button:disabled { opacity: 0.3; cursor: default; }
+    .pb-ctrl b { font-size: 18px; min-width: 26px; text-align: center; }
+    .pb-total { font-size: 14px; color: var(--gold-hi); }
+    .pb-note { font-style: normal; font-size: 12px; color: var(--ink-faint); }
+    .pb-counter { font-family: 'Courier Prime', monospace; font-size: 13px; color: var(--gold-hi); }
+    .pb-counter.is-low { color: var(--wax-hi); }
+    .sk-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; max-height: 300px; overflow-y: auto; }
+    .sk-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; text-align: left; font-size: 15px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: var(--ink-dim); }
+    .sk-item.is-on { color: var(--ink); border-color: var(--brass-soft); background: rgba(194,155,56,0.08); }
+    .sk-item.is-free { border-style: dashed; }
+    .sk-mark { width: 16px; color: var(--gold-hi); }
+    .sk-total { margin-left: auto; font-family: 'Courier Prime', monospace; font-size: 13px; }
+    .branch-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+    .branch-card { display: flex; flex-direction: column; gap: 6px; padding: 12px; text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; color: var(--ink-dim); font: inherit; }
+    .branch-card.is-active { border-color: var(--gold); background: rgba(194,155,56,0.10); color: var(--ink); }
+    .branch-tag { font-family: 'Courier Prime', monospace; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--gold-hi); }
+    .bg-card { margin-top: 8px; padding: 14px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-left: 3px solid var(--gold); border-radius: 8px; }
+    .bg-card-title { color: var(--gold-hi); }
+    .bg-lore { margin: 8px 0; font-size: 15px; color: var(--ink-dim); }
+    .bg-hook { font-size: 15px; }
+    .bg-facts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 14px; color: var(--ink-dim); }
+    .dev-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .dev-grid .btn { width: 100%; }
+    .dev-seq { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    @media (max-width: 640px) {
+      .branch-cards, .dev-grid { grid-template-columns: 1fr; }
+    }
+
+  
+    /* ===== 🏺 Запечатанные Артефакты: карточки Секретного Досье ===== */
+    .artifact-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin-top: 10px; }
+    .artifact-card { border: 1px solid rgba(201,168,88,.35); background: rgba(10,12,14,.55); padding: 12px; position: relative; display: flex; flex-direction: column; gap: 6px; }
+    .artifact-card::before { content: ""; position: absolute; inset: 4px; border: 1px dashed rgba(201,168,88,.22); pointer-events: none; }
+    .artifact-head { display: flex; align-items: center; gap: 10px; }
+    .artifact-glyph { width: 40px; height: 40px; flex: 0 0 40px; color: #c9a858; }
+    .artifact-glyph svg { width: 100%; height: 100%; display: block; }
+    .artifact-name { font-weight: 600; font-size: 14px; line-height: 1.2; }
+    .artifact-stamp { position: absolute; top: 8px; right: 10px; font-size: 10px; letter-spacing: .08em; color: #c9a858; border: 1px solid rgba(201,168,88,.5); padding: 2px 6px; transform: rotate(-3deg); opacity: .85; }
+    .artifact-bonus { color: #7fbf7f; font-size: 12px; }
+    .artifact-curse { color: #b04a4a; font-size: 12px; font-style: italic; }
+    .artifact-lore { font-size: 12px; opacity: .75; }
+    .artifact-card.is-equipped { border-color: rgba(127,191,127,.6); box-shadow: 0 0 0 1px rgba(127,191,127,.25) inset; }
+    .artifact-actions { margin-top: 4px; }
+    .artifact-empty { opacity: .6; font-size: 13px; font-style: italic; padding: 12px 0; }
+
+    /* ---------- Модальное окно броска D20 (Baldur's Gate 3 Style) ---------- */
+    .d20-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: radial-gradient(circle at center, rgba(16, 14, 22, 0.88) 0%, rgba(5, 5, 8, 0.96) 100%);
+      backdrop-filter: blur(6px);
+      animation: d20FadeIn 0.2s ease-out;
+    }
+    @keyframes d20FadeIn {
+      from { opacity: 0; transform: scale(0.96); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .d20-modal {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      padding: 24px 22px 20px;
+      text-align: center;
+      background: linear-gradient(180deg, #1b1822 0%, #110f16 100%);
+      border: 3px double var(--gold);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.95), 0 0 40px rgba(194, 155, 56, 0.12);
+    }
+    .d20-dc-shield {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: 10px auto 6px;
+      padding: 6px 22px 8px;
+      background: #0c0b10;
+      border: 1px solid var(--brass);
+      outline: 2px double rgba(194, 155, 56, 0.35);
+      outline-offset: 2px;
+    }
+    .d20-dc-label {
+      font-family: 'Cinzel', serif;
+      font-size: 9px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+    }
+    .d20-dc-val {
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 26px;
+      line-height: 1.1;
+      color: var(--gold-hi);
+    }
+    .d20-stage {
+      position: relative;
+      width: 190px;
+      height: 190px;
+      margin: 10px auto 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .d20-ring {
+      position: absolute;
+      inset: 4px;
+      border: 1px dashed rgba(194, 155, 56, 0.35);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .d20-svg {
+      width: 168px;
+      height: 168px;
+      filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.9));
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.3s ease;
+    }
+    /* Режим ожидания клика игрока */
+    .d20-stage.is-ready:hover .d20-svg {
+      transform: scale(1.06) rotate(4deg);
+      filter: drop-shadow(0 0 18px rgba(226, 194, 106, 0.45));
+    }
+    .d20-stage.is-ready .d20-ring {
+      animation: ringPulse 2s infinite ease-in-out;
+      border-color: rgba(226, 194, 106, 0.6);
+    }
+    @keyframes ringPulse {
+      0%, 100% { transform: scale(0.96); opacity: 0.45; }
+      50% { transform: scale(1.05); opacity: 0.95; }
+    }
+    /* Плавное, тяжёлое вращение куба 1.85 сек с замедлением в конце */
+    .d20-svg.is-rolling {
+      animation: d20HeavyRoll 1.85s cubic-bezier(0.12, 0.8, 0.22, 1) forwards;
+    }
+    @keyframes d20HeavyRoll {
+      0%   { transform: rotate(-540deg) scale(0.72); }
+      55%  { transform: rotate(40deg) scale(1.06); }
+      80%  { transform: rotate(-10deg) scale(0.98); }
+      100% { transform: rotate(0deg) scale(1); }
+    }
+    /* Вспышка и отдача куба при поглощении влетевшего бонуса */
+    .d20-svg.is-absorb {
+      transform: scale(1.16);
+      filter: drop-shadow(0 0 26px rgba(226, 194, 106, 0.85));
+    }
+    .d20-svg.is-bump {
+      transform: scale(1.12);
+    }
+    .d20-svg.is-crit {
+      filter: drop-shadow(0 0 22px rgba(226, 194, 106, 0.75));
+    }
+    .d20-svg.is-fumble {
+      filter: drop-shadow(0 0 22px rgba(201, 67, 58, 0.8));
+    }
+    @keyframes d20Tumble {
+      0%   { transform: rotate(-180deg) scale(0.65); }
+      45%  { transform: rotate(25deg) scale(1.08); }
+      75%  { transform: rotate(-8deg) scale(0.97); }
+      100% { transform: rotate(0deg) scale(1); }
+    }
+    .d20-bonuses {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 6px;
+      min-height: 32px;
+      margin: 8px 0 12px;
+    }
+    /* Плашки бонусов и анимация их влёта в куб */
+    .d20-pill {
+      position: relative;
+      padding: 5px 12px;
+      background: #0d0c11;
+      border: 1px solid var(--brass);
+      font-family: 'Courier Prime', monospace;
+      font-size: 13px;
+      color: var(--ink-dim);
+      transition: all 0.28s ease;
+      animation: pillPop 0.22s ease-out;
+    }
+    .d20-pill b {
+      color: var(--gold-hi);
+      margin-left: 4px;
+    }
+    .d20-pill.is-firing {
+      border-color: var(--gold-hi);
+      background: rgba(226, 194, 106, 0.18);
+      color: var(--ink);
+      transform: translateY(-4px) scale(1.06);
+      box-shadow: 0 0 16px rgba(226, 194, 106, 0.35);
+    }
+    .d20-pill.is-consumed {
+      border-color: rgba(194, 155, 56, 0.35);
+      color: var(--ink);
+      opacity: 0.75;
+    }
+    @keyframes pillPop {
+      from { opacity: 0; transform: translateY(8px) scale(0.9); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    /* Летящий сгусток бонуса (+3, +2), который влетает снизу прямо в центр куба */
+    .d20-flying-spark {
+      position: absolute;
+      left: 50%;
+      bottom: -10px;
+      transform: translateX(-50%);
+      pointer-events: none;
+      z-index: 20;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: radial-gradient(circle, #fff3c4 0%, #e2c26a 60%, rgba(194,155,56,0) 100%);
+      color: #17130a;
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 16px;
+      box-shadow: 0 0 20px #e2c26a;
+      animation: flyIntoD20 0.52s cubic-bezier(0.2, 0.7, 0.4, 1) forwards;
+    }
+    @keyframes flyIntoD20 {
+      0%   { opacity: 0; transform: translate(-50%, 35px) scale(0.7); }
+      25%  { opacity: 1; transform: translate(-50%, 10px) scale(1.15); }
+      85%  { opacity: 1; transform: translate(-50%, -82px) scale(0.95); }
+      100% { opacity: 0; transform: translate(-50%, -95px) scale(0.3); }
+    }
+    .d20-verdict {
+      min-height: 34px;
+      margin: 6px 0 14px;
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 20px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+    .d20-verdict.is-ok { color: var(--patina-hi); text-shadow: 0 0 14px rgba(143, 188, 174, 0.35); }
+    .d20-verdict.is-fail { color: var(--wax-hi); text-shadow: 0 0 14px rgba(212, 103, 94, 0.35); }
+    .d20-PotionNote {
+      font-family: 'IM Fell English', Georgia, serif;
+      font-style: italic;
+      font-size: 15px;
+      color: var(--ink-dim);
+      margin-bottom: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HUD: регистры и шкалы -->
+  <header class="hud">
+    <div class="wrap">
+      <div class="hud-row">
+        <div class="hud-id">
+          <div id="hud-name">Врата Серого Тумана</div>
+          <div id="hud-sub">Последовательность 9</div>
+        </div>
+        <div class="registers">
+          <div class="register" title="Духовность: оставшиеся ходы">
+            <span class="reg-label">Дух</span>
+            <span id="hud-turns" class="reg-val">0</span>
+          </div>
+          <div class="register" title="Печати Судьбы: перебросы">
+            <span class="reg-label">Печати</span>
+            <span id="hud-fate" class="reg-val">0</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="hud-bars" class="gauges">
+        <div class="gauge" id="g-hp">
+          <div class="gauge-head"><span class="gauge-name">Здоровье</span><span id="bar-hp-txt" class="gauge-val">0/0</span></div>
+          <div class="tube"><div id="bar-hp-fill" class="tube-fill tube-fill--hp"></div></div>
+        </div>
+        <div class="gauge" id="g-san">
+          <div class="gauge-head"><span class="gauge-name">Рассудок</span><span id="bar-san-txt" class="gauge-val">100%</span></div>
+          <div class="tube"><div id="bar-san-fill" class="tube-fill tube-fill--san"></div></div>
+        </div>
+        <div class="gauge" id="g-dig">
+          <div class="gauge-head"><span class="gauge-name">Зелье</span><span id="bar-dig-txt" class="gauge-val">0%</span></div>
+          <div class="tube"><div id="bar-dig-fill" class="tube-fill tube-fill--dig"></div></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- Создание персонажа -->
+    <section id="view-builder" class="hidden builder plate plate--deep">
+      <div class="plate-head" style="text-align:center">
+        <span class="eyebrow">Архив Тингена · 1349 год</span>
+        <h1 class="title title--xl">Ритуал Прикосновения</h1>
+      </div>
+
+      <div class="field">
+        <label for="b-name">Имя Потустороннего</label>
+        <input id="b-name" type="text" class="input" placeholder="Например: Артур Моретти" />
+      </div>
+
+      <!-- БЛОК 1: Путь + Ветка А/Б -->
+      <div class="field">
+        <label for="b-pathway">Путь возвышения</label>
+        <select id="b-pathway" class="input"></select>
+        <div id="b-pathway-info" class="hint italic-note"></div>
+      </div>
+      <div id="b-branch" class="branch-row"></div>
+
+      <!-- БЛОК 2: Происхождение + Регион -->
+      <div class="field-row">
+        <div class="field">
+          <label for="b-bg">Происхождение (16 предысторий)</label>
+          <select id="b-bg" class="input"></select>
+        </div>
+        <div class="field">
+          <label for="b-region">Стартовый регион</label>
+          <select id="b-region" class="input"></select>
+        </div>
+      </div>
+      <div id="b-bg-card" class="bg-card hidden"></div>
+
+      <!-- БЛОК 3: Point-Buy 27 очков -->
+      <div class="field">
+        <label>Характеристики — ручное распределение (Point-Buy)</label>
+        <div id="pb-counter" class="pb-counter">Осталось очков: 27 / 27</div>
+        <div id="pb-grid" class="pb-grid"></div>
+        <button type="button" onclick="pbAuto()" class="btn btn--sm" style="margin-top:8px">⚡ Авто-распределение под Путь</button>
+      </div>
+
+      <!-- БЛОК 4: Навыки и Компетенция -->
+      <div class="field">
+        <label>Навыки (<span id="sk-budget">3</span> на выбор) и ★ Компетенция (×2)</label>
+        <div id="sk-list" class="sk-list"></div>
+      </div>
+
+      <!-- БЛОК 5: Анкета -->
+      <div class="field">
+        <label for="b-bio">Твоя Личная Анкета / Предыстория (по желанию)</label>
+        <textarea id="b-bio" class="input" rows="4" placeholder="Опиши внешность, характер, врагов, долги или тайную цель твоего героя (или оставь пустым для быстрого старта). ИИ-Мастер построит завязку и сюжетную арку специально вокруг твоей анкеты!"></textarea>
+      </div>
+
+      <div class="fleuron">❦</div>
+      <button onclick="submitQuickBuild()" class="btn btn--primary">Принять зелье и шагнуть в мир</button>
+    </section>
+
+    <!-- Сюжет -->
+    <section id="tab-story" class="case-grid">
+
+      <aside class="case-side">
+        <div class="plate plate--tight">
+          <span class="eyebrow">Материалы дела</span>
+          <div id="story-loc">Тинген, улица Железного Креста</div>
+          <div id="story-arc" class="italic-note">Дело ещё не открыто</div>
+          <div class="case-actions">
+            <button onclick="combatAction('start_hunt')" class="btn btn--sm btn--blood">Охота</button>
+            <button onclick="combatAction('rest')" class="btn btn--sm btn--patina">Отдых</button>
+          </div>
+        </div>
+
+        <div id="combat-box" class="hidden plate plate--blood plate--tight">
+          <div class="enemy-head">
+            <div>
+              <span class="eyebrow">Противник</span>
+              <div id="enemy-name">Враг</div>
+              <div id="enemy-desc" class="italic-note"></div>
+            </div>
+            <div id="enemy-hp">ОЗ 0/0</div>
+          </div>
+          <div class="tactics">
+            <button onclick="combatAction('cantrip')" class="tactic"><span class="tactic-name">I. Заговор Пути</span><span class="tactic-note">Бесплатный выпад</span></button>
+            <button onclick="combatAction('mech')" class="tactic"><span class="tactic-name">II. Механика Пути</span><span class="tactic-note">Особый приём</span></button>
+            <button onclick="combatAction('myth')" class="tactic"><span class="tactic-name">III. Мифическая форма</span><span class="tactic-note">Посл. 4–0 · −20 рассудка</span></button>
+            <button onclick="combatAction('flee')" class="tactic"><span class="tactic-name">IV. Отступить</span><span class="tactic-note">Скрыться в тумане</span></button>
+          </div>
+        </div>
+      </aside>
+
+      <div class="case-main">
+        <article class="plate plate--deep narrative">
+          <div id="story-text" class="is-muted">Шагни в туман, чтобы открыть первую главу расследования.</div>
+        </article>
+
+        <div id="story-options" class="choices">
+          <button onclick="doStoryTurn(null, false)" class="btn btn--primary">Шагнуть в туман</button>
+        </div>
+
+        <div class="plate plate--tight">
+          <span class="eyebrow">Свободный ход</span>
+          <div class="intents">
+            <button onclick="setIntent('act')" id="int-act" class="intent is-active">Действие</button>
+            <button onclick="setIntent('talk')" id="int-talk" class="intent">Реплика</button>
+            <button onclick="setIntent('inspect')" id="int-inspect" class="intent">Осмотр</button>
+            <button onclick="setIntent('skill')" id="int-skill" class="intent">Магия</button>
+          </div>
+          <div class="free-row">
+            <input id="free-input" type="text" class="input" placeholder="Опиши действие, фразу или безумный ход" onkeydown="if(event.key==='Enter') sendFreeText()" />
+            <button onclick="sendFreeText()" class="btn">Ход</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Лист героя -->
+    <section id="tab-sheet" class="hidden">
+      <div class="plate">
+        <div class="plate-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px">
+          <div>
+            <span class="eyebrow">Личное дело</span>
+            <h2 class="title title--md">Карточка Потустороннего</h2>
+          </div>
+          <button onclick="document.getElementById('view-builder').classList.toggle('hidden')" class="text-link">Пересоздать</button>
+        </div>
+        <div class="sheet-grid stack">
+          <div class="stack">
+            <div id="sheet-stats" class="stats"></div>
+            <div id="sheet-abilities"></div>
+          </div>
+          <div>
+            <h3 class="title title--sm" style="margin-bottom:8px">Навыки</h3>
+            <div id="sheet-skills" class="skills"></div>
+          </div>
+        </div>
+        <div class="plate-head" style="margin-top:18px">
+          <div>
+            <span class="eyebrow">Архив реликвий</span>
+            <h3 class="title title--md">🏺 Запечатанные Артефакты (Архив)</h3>
+          </div>
+        </div>
+        <div id="sheet-artifacts" class="artifact-grid"></div>
+      </div>
+    </section>
+
+    <!-- Дело -->
+    <section id="tab-journal" class="hidden">
+      <div class="plate plate--deep">
+        <div class="plate-head">
+          <span class="eyebrow">Записная книжка</span>
+          <h2 class="title title--md">Материалы расследования</h2>
+        </div>
+        <div class="journal-grid">
+          <div class="journal-block journal-block--wide">
+            <h3 class="title title--sm">Заповедь метода отыгрыша</h3>
+            <p id="j-principle"></p>
+          </div>
+          <div class="journal-block">
+            <h3 class="title title--sm">Улики, капитал и артефакты</h3>
+            <ul id="j-clues" class="ledger-list"></ul>
+          </div>
+          <div class="journal-block">
+            <h3 class="title title--sm">Встреченные персоны</h3>
+            <ul id="j-npcs" class="ledger-list"></ul>
+          </div>
+          <div class="journal-block journal-block--wide">
+            <div class="fleuron">❦</div>
+            <h3 class="title title--sm">Хроника расследования</h3>
+            <p id="j-summary"></p>
+          </div>
+          <div class="journal-block journal-block--wide">
+            <h3 class="title title--sm">Назревающие последствия</h3>
+            <ul id="j-conseq" class="ledger-list"></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Святилище -->
+    <section id="tab-shop" class="hidden">
+      <div class="plate shop-plate">
+        <div class="plate-head" style="text-align:center">
+          <span class="eyebrow">Прейскурант</span>
+          <h2 class="title title--md">Святилище Серого Тумана</h2>
+          <p class="italic-note" style="margin-top:6px">Духовность и Печати Судьбы за Telegram Stars или банковской картой.</p>
+        </div>
+        <div class="offer">
+          <div>
+            <div class="offer-name">Искра Духовности</div>
+            <div class="offer-desc">+35 ходов Мастера и 1 Печать Судьбы</div>
+          </div>
+          <button onclick="buyStarsPack('spark')" class="btn btn--sm">50 ★</button>
+        </div>
+        <div class="offer">
+          <div>
+            <div class="offer-name">Сосуд Потустороннего</div>
+            <div class="offer-desc">+120 ходов Мастера и 3 Печати Судьбы</div>
+          </div>
+          <button onclick="buyStarsPack('vessel')" class="btn btn--sm">150 ★</button>
+        </div>
+        <div class="offer offer--vip">
+          <div>
+            <div class="offer-name">«Повелитель Тумана» · 30 дней</div>
+            <div class="offer-desc">До 35 ходов ежедневно и расширенная память</div>
+          </div>
+          <button onclick="buyStarsPack('vip')" class="btn btn--sm">300 ★</button>
+        </div>
+        <a id="tribute-btn" href="#" target="_blank" rel="noopener" class="hidden btn btn--block">Оплатить международной картой (Tribute)</a>
+      </div>
+    </section>
+
+  </main>
+
+  <nav class="tabbar">
+    <div class="wrap">
+      <button onclick="switchTab('story')" id="nav-story" class="tab is-active">Сюжет</button>
+      <button onclick="switchTab('sheet')" id="nav-sheet" class="tab">Герой</button>
+      <button onclick="switchTab('journal')" id="nav-journal" class="tab">Дело</button>
+      <button onclick="switchTab('shop')" id="nav-shop" class="tab">Святилище</button>
+      <button onclick="switchTab('dev')" id="nav-dev" class="tab hidden">⚙️ DEV</button>
+    </div>
+  </nav>
+
+    <!-- GOD MODE / DEV ПАНЕЛЬ -->
+    <section id="tab-dev" class="hidden">
+      <div class="plate plate--deep">
+        <div class="plate-head" style="text-align:center">
+          <span class="eyebrow">Только для разработчика</span>
+          <h2 class="title title--md">⚙️ GOD MODE Панель</h2>
+        </div>
+        <div class="dev-grid">
+          <button onclick="devCheat('inf_resources')" class="btn btn--block">⚡ +9999 Ходов, +99 Печатей Судьбы и VIP</button>
+          <button onclick="devCheat('full_heal')" class="btn btn--block btn--patina">❤️ Полный Отхил ОЗ + 🧠 100% Рассудок + Перезарядка умений</button>
+          <button onclick="devCheat('max_digestion')" class="btn btn--block">🧪 Переваривание зелья 100%</button>
+          <button onclick="devCheat('add_gold')" class="btn btn--block">💰 Выдать 10 000 золотых фунтов</button>
+          <button onclick="devCheat('grant_test_artifact')" class="btn btn--block btn--patina">🏺 Выдать случайный Артефакт под мой Путь</button>
+        </div>
+        <div class="field">
+          <label>Последовательность (мгновенный пересчёт ОЗ, ячеек и умений)</label>
+          <div class="dev-seq">
+            <button onclick="devCheat('set_seq', 9)" class="btn btn--sm">Посл. 9</button>
+            <button onclick="devCheat('set_seq', 7)" class="btn btn--sm">Посл. 7</button>
+            <button onclick="devCheat('set_seq', 5)" class="btn btn--sm">Посл. 5</button>
+            <button onclick="devCheat('set_seq', 4)" class="btn btn--sm">Посл. 4</button>
+            <button onclick="devCheat('set_seq', 3)" class="btn btn--sm">Посл. 3</button>
+            <button onclick="devCheat('set_seq', 2)" class="btn btn--sm">Посл. 2</button>
+            <button onclick="devCheat('set_seq', 1)" class="btn btn--sm">Посл. 1</button>
+            <button onclick="devCheat('set_seq', 0)" class="btn btn--sm btn--blood">Посл. 0 · БОГ</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Смена Пути на лету (без потери прогресса)</label>
+          <select id="dev-pathway" class="input" onchange="devCheat('set_pathway', this.value)"></select>
+        </div>
+        <div class="dev-grid">
+          <button onclick="devCheat('kill_enemy')" class="btn btn--block btn--blood">💀 Убить врага (Инста-вин)</button>
+          <button onclick="combatAction('start_hunt')" class="btn btn--block">👹 Вызвать тестового врага</button>
+          <button onclick="devCheat('reset_scene')" class="btn btn--block">🔄 Сбросить и перегенерировать сцену ИИ</button>
+        </div>
+      </div>
+    </section>
+
+  <!-- МОДАЛЬНОЕ ОКНО БРОСКА КУБИКА (КАК В BALDUR'S GATE 3) -->
+  <div id="dice-modal" class="d20-overlay hidden">
+    <div class="d20-modal plate">
+      <span class="eyebrow">Испытание Судьбы</span>
+      <div id="dice-skill" class="title title--md" style="margin-top:4px">Проверка навыка</div>
+      <div id="dice-action-txt" class="italic-note" style="margin-top:4px;font-size:15px"></div>
+
+      <!-- Щит Класса Сложности (DC) -->
+      <div class="d20-dc-shield">
+        <span class="d20-dc-label">Сложность</span>
+        <span id="dice-dc-val" class="d20-dc-val">12</span>
+      </div>
+
+      <!-- Гранёный D20 по центру -->
+      <div id="d20-stage" class="d20-stage" onclick="onUserClickRoll()">
+        <div class="d20-ring"></div>
+        <svg id="d20-svg" class="d20-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="fCenter" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#2c2638" />
+              <stop offset="100%" stop-color="#15121c" />
+            </linearGradient>
+            <linearGradient id="fTop" x1="50%" y1="0%" x2="50%" y2="100%">
+              <stop offset="0%" stop-color="#3a3248" />
+              <stop offset="100%" stop-color="#211d2a" />
+            </linearGradient>
+            <linearGradient id="fSideL" x1="0%" y1="0%" x2="100%" y2="50%">
+              <stop offset="0%" stop-color="#252030" />
+              <stop offset="100%" stop-color="#14111a" />
+            </linearGradient>
+            <linearGradient id="fSideR" x1="100%" y1="0%" x2="0%" y2="50%">
+              <stop offset="0%" stop-color="#191622" />
+              <stop offset="100%" stop-color="#0d0b12" />
+            </linearGradient>
+            <linearGradient id="fBot" x1="50%" y1="0%" x2="50%" y2="100%">
+              <stop offset="0%" stop-color="#14111b" />
+              <stop offset="100%" stop-color="#08070b" />
+            </linearGradient>
+          </defs>
+          <!-- Внешние и боковые грани икосаэдра (глухие, с объёмным градиентом и латунными гранями) -->
+          <g stroke="#c29b38" stroke-width="1.8" stroke-linejoin="round">
+            <!-- Верхняя корона граней -->
+            <polygon points="100,10 32,48 100,46" fill="url(#fTop)" />
+            <polygon points="100,10 168,48 100,46" fill="url(#fSideL)" />
+            <polygon points="32,48 18,122 52,130" fill="url(#fSideL)" />
+            <polygon points="32,48 100,46 52,130" fill="url(#fTop)" />
+            <polygon points="168,48 100,46 148,130" fill="url(#fSideR)" />
+            <polygon points="168,48 182,122 148,130" fill="url(#fBot)" />
+            <!-- Нижняя корона граней -->
+            <polygon points="18,122 52,130 42,168" fill="url(#fSideR)" />
+            <polygon points="182,122 148,130 158,168" fill="url(#fBot)" />
+            <polygon points="52,130 148,130 100,190" fill="url(#fSideR)" />
+            <polygon points="52,130 42,168 100,190" fill="url(#fBot)" />
+            <polygon points="148,130 158,168 100,190" fill="url(#fBot)" />
+            <!-- Центральная главная грань (лицом к игроку) -->
+            <polygon id="d20-center-face" points="100,46 52,130 148,130" fill="url(#fCenter)" stroke="#e2c26a" stroke-width="2.6" />
+          </g>
+          <!-- Внутренняя гравировка центральной грани -->
+          <polygon points="100,53 58,126 142,126" fill="none" stroke="rgba(226,194,106,0.28)" stroke-width="1" />
+          <!-- Число на грани D20 -->
+          <text id="dice-nat" x="100" y="114" text-anchor="middle" fill="#e2c26a" font-family="'Cinzel', serif" font-weight="700" font-size="34">20</text>
+        </svg>
+      </div>
+
+      <!-- Плашки сработавших бонусов (появляются по очереди и прибавляются к числу!) -->
+      <div id="dice-bonuses" class="d20-bonuses"></div>
+
+      <!-- Вердикт (УСПЕХ / ПРОВАЛ) -->
+      <div id="dice-verdict" class="d20-verdict">Бросок кости...</div>
+      <div id="dice-potion-note" class="d20-PotionNote"></div>
+
+      <!-- Кнопки: Перебросить (если провал) и ОК (Закрыть окно) -->
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button id="btn-reroll" onclick="triggerModalReroll()" class="hidden btn btn--sm btn--block" style="border-color:#9d68db;color:#d6bbf7">
+          🎲 Натянуть Нити Судьбы: Перебросить (2d20)
+        </button>
+        <button id="btn-dice-roll" onclick="onUserClickRoll()" class="btn btn--primary hidden">
+          🎲 Бросить куб D20
+        </button>
+        <button id="btn-dice-ok" onclick="closeDiceModal()" class="btn btn--primary hidden">
+          Продолжить
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    if (tg) { tg.ready(); tg.expand(); }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    let USER_ID = null;
+    if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
+      USER_ID = tg.initDataUnsafe.user.id; // внутри Telegram Mini App
+    } else if (urlParams.get("uid")) {
+      USER_ID = parseInt(urlParams.get("uid"), 10); // вход админом через ?uid=664506059
+    } else {
+      const stored = parseInt(localStorage.getItem("lotm_uid") || "0", 10);
+      if (stored > 0) {
+        USER_ID = stored;
+      } else {
+        // Уникальный ID для нового браузерного игрока — никаких общих профилей!
+        const genId = 900000000 + Math.floor(Math.random() * 900000000);
+        USER_ID = genId;
+        localStorage.setItem("lotm_uid", genId);
+      }
+    }
+
+    let META = null;
+    let STATE = null;
+    let CURRENT_INTENT = "act";
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const strip = (s) => String(s ?? "").replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, "").replace(/\s+/g, " ").trim();
+    const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
+    const pct = (a, b) => (b > 0 ? Math.max(0, Math.min(100, (a / b) * 100)) : 0);
+    const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+    const roman = (i) => ROMAN[i] || String(i + 1);
+
+    // Безопасный вызов API: сервер может вернуть не-JSON (например, PlainText
+    // "Internal Server Error" от Starlette при необработанном исключении).
+    // Голый res.json() в такой ситуации падал с SyntaxError: Unexpected token 'I'.
+    async function apiFetch(url, options) {
+      let res;
+      try {
+        res = await fetch(url, options);
+      } catch (err) {
+        throw new Error("Сервер недоступен. Проверь, что backend запущен.");
+      }
+      const raw = await res.text();
+      let data = null;
+      if (raw) {
+        try {
+          data = JSON.parse(raw);
+        } catch (err) {
+          data = null;
+        }
+      }
+      if (!res.ok) {
+        const detail = (data && (data.detail || data.message)) || raw || res.statusText;
+        const e = new Error(`Сервер вернул ${res.status}: ${String(detail).slice(0, 300)}`);
+        e.status = res.status;
+        e.data = data;
+        throw e;
+      }
+      if (data === null) {
+        throw new Error("Сервер вернул пустой или некорректный ответ.");
+      }
+      return data;
+    }
+
+    function setGauge(key, percent, text) {
+      $(`bar-${key}-txt`).textContent = text;
+      $(`bar-${key}-fill`).style.width = `${percent}%`;
+      $(`g-${key}`).classList.toggle("is-low", key !== "dig" && percent <= 30);
+    }
+
+    function switchTab(tab) {
+      ["story", "sheet", "journal", "shop", "dev"].forEach((t) => {
+        const el = $("tab-" + t);
+        if (el) el.classList.toggle("hidden", t !== tab);
+        const nav = $("nav-" + t);
+        if (nav) nav.classList.toggle("is-active", t === tab);
+      });
+      window.scrollTo({ top: 0 });
+    }
+
+    // ===== 🏺 Запечатанные Артефакты: 12 векторных монохромных глифов =====
+    const ART_GLYPHS = {
+      watch: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="7"/><path d="M12 8v4l3 2M12 2v2M12 20v2M3 12H1M23 12h-2"/></svg>',
+      revolver: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9h14l4 2-2 3h-5l-2 4H8l1-4H5z"/><circle cx="7" cy="11" r="1"/><circle cx="10" cy="11" r="1"/></svg>',
+      ring: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="14" r="6"/><path d="M9 5l3-2 3 2-3 3z"/></svg>',
+      mask: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6c3 2 5 2 8 2s5 0 8-2c0 7-3 12-8 14-5-2-8-7-8-14z"/><circle cx="9" cy="11" r="1"/><circle cx="15" cy="11" r="1"/></svg>',
+      dagger: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l2 8-2 12-2-12z"/><path d="M7 12h10"/></svg>',
+      monocle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="6"/><path d="M14 14l6 7"/></svg>',
+      mirror: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="10" rx="7" ry="8"/><path d="M8 20h8M12 18v2"/></svg>',
+      vial: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 2h4M11 2v6l-4 10a3 3 0 003 4h4a3 3 0 003-4l-4-10V2"/><path d="M8.5 14h7"/></svg>',
+      tome: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 3h10a3 3 0 013 3v15H8a3 3 0 01-3-3z"/><path d="M5 17a3 3 0 013-3h10M9 7h5"/></svg>',
+      lantern: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3h8M10 3v3h4V3M7 6h10l-1 5a4 4 0 01-8 0z"/><path d="M10 21h4M12 15v6"/></svg>',
+      cane: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 3a4 4 0 014 4c0 3-3 5-3 8v6"/><path d="M12 21h6"/></svg>',
+      tarot: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="12" r="3.5"/><path d="M12 5v3M12 16v3"/></svg>'
+    };
+    const ART_SKILL_NAMES = { athletics: "Атлетике", brawling: "Силовому напору", acrobatics: "Акробатике", sleight_of_hand: "Ловкости рук", stealth: "Скрытности", firearms: "Стрельбе", arcana: "Оккультизму", history: "Истории", investigation: "Анализу", nature: "Инженерии", religion: "Религии", animal_handling: "Духовному Зрению", insight: "Проницательности", medicine: "Медицине", perception: "Восприятию", survival: "Выживанию", deception: "Обману", intimidation: "Запугиванию", performance: "Этикету", persuasion: "Убеждению", all: "всем проверкам" };
+
+    function bonusText(art) {
+      if (Number(art.ac_bonus) > 0 && !art.skill) return `+${art.ac_bonus} к Защите`;
+      const sk = ART_SKILL_NAMES[art.skill] || "проверкам";
+      return `+${art.bonus} к ${sk}`;
+    }
+    function artStamp(art) {
+      const cls = Number(art.class) || 3;
+      const serial = String(art.id).padStart(4, "0");
+      return `КЛАСС ${cls}-${serial}`;
+    }
+    function renderArtifacts() {
+      const box = $("sheet-artifacts");
+      if (!box) return;
+      const arts = (STATE.character && STATE.character.artifacts) || [];
+      if (!arts.length) {
+        box.innerHTML = '<div class="artifact-empty">Архив пуст: запечатанные реликвии находят хозяина за выдающиеся деяния.</div>';
+        return;
+      }
+      box.innerHTML = arts.map((a) => {
+        const glyph = ART_GLYPHS[a.icon] || ART_GLYPHS.tarot;
+        const eq = !!a.equipped;
+        return `<div class="artifact-card${eq ? " is-equipped" : ""}">
+          <span class="artifact-stamp">${artStamp(a)}</span>
+          <div class="artifact-head">
+            <span class="artifact-glyph">${glyph}</span>
+            <span class="artifact-name">${esc(a.name || "Безымянная реликвия")}</span>
+          </div>
+          <div class="artifact-bonus">${esc(bonusText(a))}</div>
+          <div class="artifact-curse">☠ ${esc(a.curse || "Проклятие молчит... пока что")}</div>
+          ${a.lore ? `<div class="artifact-lore">${esc(a.lore)}</div>` : ""}
+          <div class="artifact-actions"><button onclick="toggleArtifact(${Number(a.id)})" class="btn btn--sm btn--block">${eq ? "[ Экипирован ✓ / Снять ]" : "[ Экипировать ]"}</button></div>
+        </div>`;
+      }).join("");
+    }
+    async function toggleArtifact(artifactId) {
+      try {
+        const data = await apiFetch("/api/character/equip_artifact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: USER_ID, artifact_id: artifactId })
+        });
+        STATE = data;
+        renderState();
+      } catch (err) {
+        alert("Артефакт: " + err.message);
+      }
+    }
+
+    async function devCheat(action, value = null) {
+      try {
+        const data = await apiFetch("/api/dev/cheat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: USER_ID, action: action, value: value })
+        });
+        STATE = data;
+        renderState();
+      } catch (err) {
+        alert("DEV: " + err.message);
+      }
+    }
+    function setIntent(intent) {
+      CURRENT_INTENT = intent;
+      ["act", "talk", "inspect", "skill"].forEach((k) => {
+        const el = $("int-" + k);
+        if (el) el.classList.toggle("is-active", k === intent);
+      });
+    }
+
+    async function initApp() {
+      META = await apiFetch("/api/meta");
+      populateBuilderSelects();
+      if (META.tribute_link) {
+        const tBtn = $("tribute-btn");
+        tBtn.href = META.tribute_link;
+        tBtn.classList.remove("hidden");
+      }
+      await loadState();
+      d20Draw(0, null);
+    }
+
+    // ===== Point-Buy 27 =====
+    const PB_ABIL = { str: "СИЛ", dex: "ЛОВ", con: "ТЕЛ", int: "ИНТ", wis: "МУД", cha: "ХАР" };
+    let PB_STATE = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+    let PB_SKILLS = new Set();
+    let PB_EXPERTISE = null;
+
+    function statCost(v) { return { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 6, 15: 8 }[v] ?? 0; }
+    function pbSpent() { return Object.values(PB_STATE).reduce((s, v) => s + statCost(v), 0); }
+    const PB_BUDGET = () => (META && META.point_buy_budget) || 27;
+    function pathwayStatKeys() {
+      const p = META && META.pathways && META.pathways.find((x) => x.key === $("b-pathway").value);
+      return (p && p.stat && p.stat.split("/")) || [];
+    }
+    function bgStatBonus() {
+      const b = META && META.backgrounds && META.backgrounds.find((x) => x.key === $("b-bg").value);
+      return (b && b.stat_bonus) || {};
+    }
+
+    function pbRender() {
+      const budget = PB_BUDGET();
+      const left = budget - pbSpent();
+      $("pb-counter").textContent = `Осталось очков: ${left} / ${budget}`;
+      $("pb-counter").classList.toggle("is-low", left < 0);
+      const fav = pathwayStatKeys();
+      const bgs = bgStatBonus();
+      $("pb-grid").innerHTML = Object.keys(PB_ABIL).map((k) => {
+        const base = PB_STATE[k];
+        const potion = (fav.includes(k) ? 2 : 0);
+        const bg = bgs[k] || 0;
+        const total = base + potion + bg;
+        const parts = [potion ? `+${potion} зелье` : "", bg ? `+${bg} происх.` : ""].filter(Boolean).join(", ");
+        return `<div class="pb-item">
+          <span class="pb-name">${PB_ABIL[k]}${fav.includes(k) ? " ◆" : ""}</span>
+          <span class="pb-ctrl">
+            <button type="button" onclick="pbStep('${k}',-1)" ${base <= 8 ? "disabled" : ""}>−</button>
+            <b>${base}</b>
+            <button type="button" onclick="pbStep('${k}',1)" ${base >= 15 || left <= 0 ? "disabled" : ""}>+</button>
+          </span>
+          <span class="pb-total">${total} (${signed(Math.floor((total - 10) / 2))})${parts ? ` <i class="pb-note">${parts}</i>` : ""}</span>
+        </div>`;
+      }).join("");
+    }
+
+    function pbStep(k, d) {
+      const next = PB_STATE[k] + d;
+      if (next < 8 || next > 15) return;
+      if (d > 0 && pbSpent() + (statCost(next) - statCost(PB_STATE[k])) > PB_BUDGET()) return;
+      PB_STATE[k] = next;
+      pbRender();
+    }
+
+    function pbAuto() {
+      const fav = pathwayStatKeys();
+      const keys = Object.keys(PB_STATE);
+      PB_STATE = { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 };
+      const want = { 15: [], 14: [], 13: [] };
+      if (fav.length) { want[15].push(fav[0]); }
+      want[14].push(fav[1] || (keys.find((k) => !fav.includes(k)) || "dex"));
+      want[13].push(...["con", ...keys].filter((k) => !want[15].includes(k) && !want[14].includes(k)).slice(0, 2));
+      let spent = 0;
+      for (const [v, list] of Object.entries(want)) {
+        for (const k of list) {
+          const cost = statCost(v) - statCost(PB_STATE[k]);
+          if (spent + cost <= PB_BUDGET()) { spent += cost; PB_STATE[k] = v; }
+        }
+      }
+      const rest = keys.filter((k) => PB_STATE[k] === 8 && !want[15].includes(k) && !want[14].includes(k));
+      for (const k of rest) {
+        let v = PB_STATE[k];
+        while (v < 15 && spent + (statCost(v + 1) - statCost(v)) <= PB_BUDGET() && (fav.includes(k) || v + 1 <= 12)) {
+          spent += statCost(v + 1) - statCost(v); v++;
+        }
+        PB_STATE[k] = v;
+      }
+      pbRender(); skRender();
+    }
+
+    function skRender() {
+      const cat = (META && META.skills_catalog) || [];
+      const b = META && META.backgrounds && META.backgrounds.find((x) => x.key === $("b-bg").value);
+      const free = (b && b.free_skill) || "";
+      const fav = pathwayStatKeys();
+      const bgs = bgStatBonus();
+      const stats = {};
+      Object.keys(PB_STATE).forEach((k) => { stats[k] = PB_STATE[k] + (fav.includes(k) ? 2 : 0) + (bgs[k] || 0); });
+      $("sk-list").innerHTML = cat.map((s) => {
+        const isFree = s.key === free;
+        const picked = PB_SKILLS.has(s.key);
+        const exp = PB_EXPERTISE === s.key;
+        const abKey = s.ability_key || s.ability;
+        const abMod = Math.floor(((stats[abKey] || 10) - 10) / 2);
+        const prof = isFree || picked ? 2 : 0;
+        const total = abMod + prof * (exp ? 2 : 1);
+        const expBtn = (picked && !isFree)
+          ? `<span class="sk-exp${exp ? " is-on" : ""}" onclick="event.stopPropagation(); skExpertise('${s.key}')" title="Компетенция ×2">[★ ×2]</span>`
+          : "";
+        return `<button type="button" class="sk-item${isFree ? " is-free" : ""}${picked || isFree ? " is-on" : ""}" onclick="skToggle('${s.key}')">
+          <span class="sk-mark">${exp ? "★" : (isFree || picked ? "✓" : "·")}</span>
+          <span>${esc(s.name)} <i class="pb-note">(${esc(s.ability)})</i></span>
+          ${expBtn}
+          <span class="sk-total">${signed(total)}</span>
+        </button>`;
+      }).join("");
+      const bud = 3 + Math.max(0, Math.floor(((stats.int || 10) - 10) / 2));
+      $("sk-budget").textContent = `${PB_SKILLS.size} из ${bud}`;
+    }
+
+    function skExpertise(key) {
+      const b = META && META.backgrounds && META.backgrounds.find((x) => x.key === $("b-bg").value);
+      if (b && key === b.free_skill) return;
+      if (!PB_SKILLS.has(key)) return;
+      PB_EXPERTISE = (PB_EXPERTISE === key) ? null : key;
+      skRender();
+    }
+
+    function skToggle(key) {
+      const b = META && META.backgrounds && META.backgrounds.find((x) => x.key === $("b-bg").value);
+      if (b && key === b.free_skill) return;
+      if (PB_EXPERTISE === key) { PB_EXPERTISE = null; skRender(); return; }
+      if (PB_SKILLS.has(key)) { PB_SKILLS.delete(key); if (PB_EXPERTISE === key) PB_EXPERTISE = null; }
+      else {
+        const stats = {};
+        Object.keys(PB_STATE).forEach((k) => { stats[k] = PB_STATE[k] + (pathwayStatKeys().includes(k) ? 2 : 0); });
+        const bud = 3 + Math.max(0, Math.floor(((stats.int || 10) - 10) / 2));
+        if (PB_SKILLS.size >= bud) return;
+        PB_SKILLS.add(key);
+      }
+      skRender();
+    }
+
+    function populateBuilderSelects() {
+      const pSel = $("b-pathway");
+      pSel.innerHTML = META.pathways.map((p) => `<option value="${esc(p.key)}">${esc(strip(p.name))} — Посл. 9 «${esc(strip(p.seq9_title))}»</option>`).join("");
+      pSel.onchange = () => {
+        const p = META.pathways.find((x) => x.key === pSel.value);
+        if (!p) return;
+        $("b-pathway-info").innerHTML = `<b>${esc(strip(p.core_9.name))}</b>: ${esc(p.core_9.desc)}<br>Ключевые статы: <b>${esc((p.stat || "").toUpperCase())}</b> · Кость хитов: d${esc(p.bone)} · Заповедь: ${esc(strip(p.principle))}`;
+        $("b-branch").innerHTML = `
+          <button type="button" class="branch-card is-active" id="branch-a" onclick="pickBranch('a')">
+            <span class="branch-tag">Ветка А</span>
+            <b>${esc(strip(p.choice_a.name))}</b>
+            <span class="italic-note">${esc(p.choice_a.desc)}</span>
+          </button>
+          <button type="button" class="branch-card" id="branch-b" onclick="pickBranch('b')">
+            <span class="branch-tag">Ветка Б</span>
+            <b>${esc(strip(p.choice_b.name))}</b>
+            <span class="italic-note">${esc(p.choice_b.desc)}</span>
+          </button>`;
+        pbRender(); skRender();
+      };
+      pSel.onchange();
+
+      const bgList = META.backgrounds && META.backgrounds.length ? META.backgrounds : [{ key: "detective", name: "Частный сыщик" }];
+      $("b-bg").innerHTML = bgList.map((b) => `<option value="${esc(b.key)}">${esc(strip(b.name))}</option>`).join("");
+      $("b-bg").onchange = () => {
+        const b = bgList.find((x) => x.key === $("b-bg").value);
+        if (!b) return;
+        const bon = Object.entries(b.stat_bonus || {}).map(([k, v]) => `+${v} ${PB_ABIL[k] || k.toUpperCase()}`).join(", ");
+        const chk = Object.entries(b.check_bonus || {}).map(([k]) => esc(strip((META.skills_catalog.find((s) => s.key === k) || {}).name || k))).join(", ");
+        $("b-bg-card").innerHTML = `
+          <b class="bg-card-title">${esc(strip(b.name))}</b>
+          <p class="bg-lore">${esc(b.lore || "")}</p>
+          <p class="bg-hook">♟ <i>Сюжетный крючок:</i> ${esc(b.story_hook || "")}</p>
+          <div class="bg-facts">
+            <span>⚡ ${esc(bon || "—")}</span>
+            <span>🎯 +2 к проверкам: ${chk || "—"}</span>
+            <span>💰 ${esc(b.gold ?? 25)} фунтов</span>
+            <span>🎒 ${esc(b.gear || "")}</span>
+          </div>`;
+        $("b-bg-card").classList.remove("hidden");
+        pbRender(); skRender();
+      };
+      $("b-bg").onchange();
+
+      const regList = META.regions && META.regions.length ? META.regions : [{ key: "tingen", name: "Тинген" }];
+      $("b-region").innerHTML = regList.map((r) => `<option value="${esc(r.key)}">${esc(strip(r.name))}</option>`).join("");
+    }
+
+    function pickBranch(x) {
+      const a = $("branch-a"), b = $("branch-b");
+      if (a) a.classList.toggle("is-active", x === "a");
+      if (b) b.classList.toggle("is-active", x === "b");
+    }
+
+    async function loadState() {
+      STATE = await apiFetch(`/api/state/${USER_ID}`);
+      renderState();
+    }
+
+    function renderState() {
+      // DEV-вкладка и кнопка
+      const isDev = !!STATE.is_dev;
+      const navDev = $("nav-dev");
+      if (navDev) navDev.classList.toggle("hidden", !isDev);
+      const tabDev = $("tab-dev");
+      if (tabDev && !isDev) tabDev.classList.add("hidden");
+      const devPath = $("dev-pathway");
+      if (devPath && META) {
+        devPath.innerHTML = META.pathways.map((p) => `<option value="${esc(p.key)}">${esc(strip(p.name))}</option>`).join("");
+      }
+
+      if (!STATE.has_character) {
+        $("view-builder").classList.remove("hidden");
+        $("hud-name").textContent = "Создай Потустороннего";
+        return;
+      }
+      $("view-builder").classList.add("hidden");
+      const c = STATE.character;
+      const s = STATE.session;
+
+      $("hud-name").textContent = `${c.name} · ${strip(c.pathway_name)}`;
+      $("hud-sub").textContent = `Посл. ${c.sequence} «${strip(c.seq_title)}» · КД ${c.effective_ac}`;
+      $("hud-turns").textContent = s.turns_left;
+      $("hud-fate").textContent = s.fate_tokens;
+      setGauge("hp", pct(c.hp, c.max_hp), `${c.hp}/${c.max_hp}`);
+      setGauge("san", pct(c.sanity, 100), `${c.sanity}%`);
+      setGauge("dig", pct(c.digestion, 100), `${c.digestion}%`);
+
+      $("story-loc").textContent = strip(s.location);
+      $("story-arc").textContent = s.current_arc || "Новое расследование в тумане";
+      if (s.last_narrative) { $("story-text").textContent = s.last_narrative; $("story-text").classList.remove("is-muted"); }
+
+      const enemy = s.enemy || {};
+      const inCombat = enemy.hp && enemy.hp > 0;
+      $("combat-box").classList.toggle("hidden", !inCombat);
+      if (inCombat) {
+        $("enemy-name").textContent = `${strip(enemy.name)} · Посл. ${enemy.seq || 9}`;
+        $("enemy-desc").textContent = enemy.desc || "";
+        $("enemy-hp").textContent = `ОЗ ${enemy.hp}/${enemy.max_hp}`;
+      }
+
+      const optBox = $("story-options");
+      if (inCombat) {
+        optBox.innerHTML = "";
+      } else if (!s.enriched_options || !s.enriched_options.length) {
+        optBox.innerHTML = `<button onclick="doStoryTurn(null, false)" class="btn btn--primary">Шагнуть в туман</button>`;
+      } else {
+        optBox.innerHTML = s.enriched_options.map((o, idx) => {
+          const skill = strip(o.skill_name).split(" ")[0];
+          return `<button onclick="doStoryTurn(${Number(o.id)}, false)" class="choice">
+            <span class="choice-num">${roman(idx)}</span>
+            <span class="choice-body">
+              <span class="choice-text">${esc(o.text)}</span>
+              <span class="choice-meta">${esc(skill)} ${signed(o.player_bonus)} · Сл ${esc(o.dc)}</span>
+            </span>
+          </button>`;
+        }).join("");
+      }
+
+      $("sheet-stats").innerHTML = Object.entries(c.stats).map(([k, v]) => {
+        const mod = Math.floor((v - 10) / 2);
+        return `<div class="stat"><span class="stat-k">${esc(k)}</span><span class="stat-v">${esc(v)}</span><span class="stat-m">${signed(mod)}</span></div>`;
+      }).join("");
+
+      $("sheet-abilities").innerHTML = `<h3 class="title title--sm" style="margin-bottom:10px">Открытые способности Пути</h3>` +
+        c.abilities.map((a) => `<div class="ability"><b>Посл. ${esc(a.seq)} · ${esc(strip(a.name))}</b> — <span>${esc(a.desc)}</span></div>`).join("");
+
+      $("sheet-skills").innerHTML = Object.values(c.skill_bonuses).map((sk) => {
+        const mark = sk.mult >= 2 ? "★" : (sk.mult === 1 ? "✓" : "·");
+        return `<div class="skill"><span class="skill-mark">${mark}</span><span>${esc(strip(sk.name))}</span><span class="skill-leader"></span><span class="skill-val">${signed(sk.total)}</span></div>`;
+      }).join("");
+
+      renderArtifacts();
+
+      $("j-principle").textContent = c.acting_principle;
+      $("j-clues").innerHTML = (s.clues && s.clues.length) ? s.clues.map((x) => `<li>${esc(x)}</li>`).join("") : "<li>Улик пока нет</li>";
+      $("j-npcs").innerHTML = (s.npcs && s.npcs.length) ? s.npcs.map((x) => `<li>${esc(x)}</li>`).join("") : "<li>Персоны пока не встречены</li>";
+      $("j-summary").textContent = s.summary || "Хроника только открыта.";
+      const conseqBox = $("j-conseq");
+      if (conseqBox) {
+        const cq = (s.consequences || []).filter((x) => x && typeof x === "object");
+        conseqBox.innerHTML = cq.length
+          ? cq.map((x) => {
+              const threat = Math.max(1, Math.min(3, Number(x.threat) || 1));
+              const marks = "◆".repeat(threat);
+              const who = x.target ? `<b>${esc(strip(x.target))}</b> — ` : "";
+              const trig = x.trigger ? ` <em class="italic-note">(${esc(strip(x.trigger))})</em>` : "";
+              return `<li><span class="ledger-marks">${marks}</span> ${who}${esc(strip(x.event))}${trig}</li>`;
+            }).join("")
+          : "<li>Последствий пока нет</li>";
+      }
+    }
+
+    async function submitQuickBuild() {
+      const payload = {
+        user_id: USER_ID,
+        name: $("b-name").value || "Клейн",
+        pathway: $("b-pathway").value,
+        background: $("b-bg").value,
+        region: $("b-region").value,
+        branch_9: ($("branch-b") && $("branch-b").classList.contains("is-active")) ? "b" : "a",
+        stats_pb: { ...PB_STATE },
+        skills: [...PB_SKILLS],
+        expertise: PB_EXPERTISE,
+        bio: $("b-bio").value
+      };
+      STATE = await apiFetch("/api/build_quick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      renderState();
+    }
+
+    // ===== 3D D20 (Canvas икосаэдр) =====
+    const D20_VERTS = (() => {
+      const t = (1 + Math.sqrt(5)) / 2, v = [];
+      [[-1,t,0],[1,t,0],[-1,-t,0],[1,-t,0],[0,-1,t],[0,1,t],[0,-1,-t],[0,1,-t],[t,0,-1],[t,0,1],[-t,0,-1],[-t,0,1]]
+        .forEach(p => v.push(p.map(x => x / Math.sqrt(1 + t*t))));
+      return v;
+    })();
+    const D20_FACES = (() => {
+      const f = [];
+      for (let i = 0; i < 12; i++) for (let j = i+1; j < 12; j++) {
+        const d = Math.hypot(D20_VERTS[i][0]-D20_VERTS[j][0], D20_VERTS[i][1]-D20_VERTS[j][1], D20_VERTS[i][2]-D20_VERTS[j][2]);
+        if (Math.abs(d - 2/ Math.sqrt(1 + 0)) < 1.2) {} // noop
+      }
+      const edges = [[0,1],[0,4],[0,5],[0,10],[0,11],[1,5],[1,7],[1,8],[1,9],[2,3],[2,4],[2,6],[2,10],[2,11],[3,6],[3,7],[3,9],[4,5],[4,10],[4,11],[5,9],[5,11],[6,7],[6,10],[7,8],[8,9],[9,11],[3,8],[6,8],[10,11]];
+      return edges;
+    })();
+    let D20_SPIN = null;
+    function d20Draw(nat, glow) {
+      const cv = $("d20-canvas"); if (!cv) return;
+      const ctx = cv.getContext("2d"), W = cv.width, H = cv.height, cx = W/2, cy = H/2, R = 62;
+      const s = D20_SPIN;
+      let ax = s ? s.ax : -0.45, ay = s ? s.ay : 0.65, ang = s ? s.ang : 0.9;
+      ctx.clearRect(0, 0, W, H);
+      const pts = D20_VERTS.map(v => {
+        let [x, y, z] = v;
+        let c = Math.cos(ay), n = Math.sin(ay); [x, z] = [x*c + z*n, -x*n + z*c];
+        c = Math.cos(ax); n = Math.sin(ax); [y, z] = [y*c - z*n, y*n + z*c];
+        c = Math.cos(ang); n = Math.sin(ang); [x, y] = [x*c - y*n, x*n + y*c];
+        return [cx + x*R, cy - y*R*0.95, z];
+      });
+      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = "#e2c26a";
+      ctx.shadowColor = glow || "rgba(226,194,106,0.55)";
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      D20_FACES.forEach(([a, b]) => { ctx.moveTo(pts[a][0], pts[a][1]); ctx.lineTo(pts[b][0], pts[b][1]); });
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      const front = pts.filter(p => p[2] < 0.25);
+      if (front.length >= 3) {
+        ctx.beginPath();
+        ctx.moveTo(front[0][0], front[0][1]);
+        front.slice(1).forEach(p => ctx.lineTo(p[0], p[1]));
+        ctx.closePath();
+        ctx.fillStyle = "rgba(13,14,20,0.88)";
+        ctx.fill();
+      }
+      if (nat) {
+        ctx.fillStyle = nat === 20 ? "#ffe9a8" : (nat === 1 ? "#ff7a6e" : "#e6dec8");
+        ctx.font = "700 30px 'JetBrains Mono', monospace";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.shadowColor = nat === 20 ? "rgba(255,215,120,0.9)" : (nat === 1 ? "rgba(255,90,80,0.8)" : "rgba(0,0,0,0.6)");
+        ctx.shadowBlur = nat === 20 || nat === 1 ? 18 : 4;
+        ctx.fillText(String(nat), cx, cy + 2);
+        ctx.shadowBlur = 0;
+      }
+    }
+    function d20SpinStart() {
+      if (D20_SPIN) return;
+      D20_SPIN = { ax: -0.45, ay: 0.65, ang: Math.random() * 6, vx: 0.09, vy: 0.13, va: 0.42, t0: performance.now() };
+      const loop = () => {
+        if (!D20_SPIN) return;
+        const s = D20_SPIN;
+        s.ang += s.va; s.ax += s.vx * 0.3; s.ay += s.vy * 0.3;
+        d20Draw(s.show || 0, "rgba(226,194,106,0.4)");
+        requestAnimationFrame(loop);
+      };
+      requestAnimationFrame(loop);
+    }
+    function d20SpinStop(nat) {
+      if (!D20_SPIN) { d20Draw(nat, nat === 20 ? "rgba(255,215,120,0.95)" : (nat === 1 ? "rgba(255,90,80,0.9)" : null)); return; }
+      const s = D20_SPIN, t0 = performance.now(), dur = 900, va0 = s.va;
+      const ease = t => 1 - Math.pow(1 - t, 3);
+      const step = now => {
+        const k = Math.min(1, (now - t0) / dur);
+        s.va = va0 * (1 - ease(k)); s.ang += s.va;
+        if (k >= 1) {
+          D20_SPIN = null;
+          d20Draw(nat, nat === 20 ? "rgba(255,215,120,0.95)" : (nat === 1 ? "rgba(255,90,80,0.9)" : null));
+          return;
+        }
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+
+
+    // ===== D20: 4 такта — ожидание клика → прокрут 1.85с → чистый бросок 1с → влёт бонусов =====
+    let _pendingRoll = null;   // { r, optionId, isReroll, freeText }
+    let _rollStarted = false;
+    let _diceAnimTimer = null;
+
+    function closeDiceModal() {
+      $("dice-modal").classList.add("hidden");
+      if (_diceAnimTimer) { clearInterval(_diceAnimTimer); _diceAnimTimer = null; }
+      _pendingRoll = null;
+      _rollStarted = false;
+    }
+
+    async function triggerModalReroll() {
+      await doStoryTurn(null, true, null);
+    }
+
+    // Такт 1: мгновенный /api/story/roll получен — показываем куб в покое + бонусы в лотке
+    function showDiceReady(r, optionId, isReroll, freeText) {
+      const modal = $("dice-modal");
+      const svg = $("d20-svg");
+      const natEl = $("dice-nat");
+      const bonBox = $("dice-bonuses");
+      const verdEl = $("dice-verdict");
+      const stage = $("d20-stage");
+
+      _pendingRoll = { r, optionId, isReroll, freeText };
+      _rollStarted = false;
+
+      modal.classList.remove("hidden");
+      svg.classList.remove("is-crit", "is-fumble", "is-bump", "is-rolling", "is-absorb");
+      stage.classList.add("is-ready");
+
+      $("dice-skill").textContent = strip(r.skill_name);
+      $("dice-action-txt").textContent = `«${r.action_text}»`;
+      $("dice-dc-val").textContent = r.dc;
+      natEl.textContent = "D20";
+      bonBox.innerHTML = "";
+      verdEl.className = "d20-verdict";
+      verdEl.textContent = "Нажми на куб, чтобы совершить бросок";
+      $("dice-potion-note").textContent = "";
+      $("btn-reroll").classList.add("hidden");
+      $("btn-dice-ok").classList.add("hidden");
+      $("btn-dice-roll").classList.remove("hidden");
+
+      // Такт 1: заранее показываем ВСЕ модификаторы игрока из pre.roll.parts
+      const parts = Array.isArray(r.parts) ? r.parts : [];
+      parts.forEach((p) => {
+        const val = Number(p.value) || 0;
+        const pill = document.createElement("span");
+        pill.className = "d20-pill";
+        pill.innerHTML = `${esc(p.label)} <b>${signed(val)}</b>`;
+        bonBox.appendChild(pill);
+      });
+    }
+
+    // Такты 2–4: игрок кликнул по кубу (или кнопке)
+    function onUserClickRoll() {
+      if (_rollStarted || !_pendingRoll) return;
+      _rollStarted = true;
+      const { r, optionId, isReroll, freeText } = _pendingRoll;
+      const svg = $("d20-svg");
+      const natEl = $("dice-nat");
+      const verdEl = $("dice-verdict");
+      const stage = $("d20-stage");
+
+      stage.classList.remove("is-ready");
+      $("btn-dice-roll").classList.add("hidden");
+      verdEl.className = "d20-verdict";
+      verdEl.textContent = "Бросаем грань судьбы...";
+      $("dice-potion-note").textContent = "ИИ-Мастер плетёт продолжение сцены...";
+
+      // Параллельно летит запрос к ИИ с pre_rolled
+      const turnPromise = _fireStoryTurn(r, optionId, isReroll, freeText);
+      turnPromise.catch(() => {}); // отложенная обработка ошибки в resolveDiceSeq
+
+      // Такт 2: плавное тяжёлое вращение 1.85 с с замедлением перебора чисел
+      svg.classList.remove("is-rolling");
+      void svg.offsetWidth;
+      svg.classList.add("is-rolling");
+      if (_diceAnimTimer) clearInterval(_diceAnimTimer);
+      let tick = 0;
+      const tickFace = () => {
+        natEl.textContent = 1 + Math.floor(Math.random() * 20);
+        tick++;
+        clearInterval(_diceAnimTimer);
+        // замедление: 70ms → 120ms → 200ms
+        const delay = tick < 12 ? 70 : (tick < 22 ? 120 : 200);
+        _diceAnimTimer = setInterval(tickFace, delay);
+      };
+      _diceAnimTimer = setInterval(tickFace, 70);
+
+      setTimeout(() => {
+        clearInterval(_diceAnimTimer); _diceAnimTimer = null;
+        svg.classList.remove("is-rolling");
+
+        // Такт 3: чистый бросок на грани — пауза 1000 мс
+        natEl.textContent = r.natural;
+        verdEl.textContent = r.mode === "adv" && r.rolls && r.rolls.length > 1
+          ? `Бросок 2d20 [${r.rolls.join(", ")}] → выбрано ${r.natural}`
+          : `На грани выпало: ${r.natural}`;
+        if (r.natural === 20) svg.classList.add("is-crit");
+        else if (r.natural === 1) svg.classList.add("is-fumble");
+
+        setTimeout(() => {
+          // Такт 4: поочерёдный влёт каждого бонуса (по 750 мс)
+          const parts = Array.isArray(r.parts) ? r.parts : [];
+          const pills = Array.from(bonBoxPills());
+          let idx = 0;
+          let runningTotal = r.natural;
+
+          function nextBonus() {
+            if (idx < parts.length) {
+              const i = idx++;
+              const p = parts[i];
+              const val = Number(p.value) || 0;
+              runningTotal += val;
+
+              const pill = pills[i];
+              if (pill) pill.classList.add("is-firing");
+
+              // Летящий золотой сгусток в центр грани
+              const spark = document.createElement("div");
+              spark.className = "d20-flying-spark";
+              spark.textContent = signed(val);
+              stage.appendChild(spark);
+              setTimeout(() => spark.remove(), 540);
+
+              // Удар о грань на 480 мс: вспышка куба + новое число
+              setTimeout(() => {
+                if (pill) { pill.classList.remove("is-firing"); pill.classList.add("is-consumed"); }
+                svg.classList.remove("is-absorb");
+                void svg.offsetWidth;
+                svg.classList.add("is-absorb");
+                natEl.textContent = runningTotal;
+                setTimeout(() => svg.classList.remove("is-absorb"), 240);
+              }, 480);
+
+              setTimeout(nextBonus, 750);
+            } else {
+              // Финальный штамп
+              natEl.textContent = r.total;
+              if (r.natural === 20) {
+                verdEl.textContent = "★ Критический Успех! ★";
+                verdEl.className = "d20-verdict is-ok";
+              } else if (r.natural === 1) {
+                verdEl.textContent = "💀 Критический Провал 💀";
+                verdEl.className = "d20-verdict is-fail";
+              } else if (r.success) {
+                verdEl.textContent = `УСПЕХ (${r.total} ≥ СЛ ${r.dc})`;
+                verdEl.className = "d20-verdict is-ok";
+              } else {
+                verdEl.textContent = `ПРОВАЛ (${r.total} < СЛ ${r.dc})`;
+                verdEl.className = "d20-verdict is-fail";
+              }
+              resolveDiceSeq(turnPromise, r);
+            }
+          }
+          setTimeout(nextBonus, 400);
+        }, 1000); // Такт 3: ровно 1 секунда осознания чистого броска
+      }, 1850);   // Такт 2: плавный прокрут 1.85 с
+    }
+
+    function bonBoxPills() {
+      return $("dice-bonuses").querySelectorAll(".d20-pill");
+    }
+
+    let _diceResolve = null;
+    function resolveDiceSeq(turnPromise, r) {
+      turnPromise.then((data) => {
+        STATE = data.state;
+        renderState();
+        const digGain = Number(data.dig_gain) || 0;
+        const fb = (data.ai && data.ai.acting_feedback) ? data.ai.acting_feedback : "";
+        $("dice-potion-note").textContent = digGain > 0
+          ? `🧪 Метод отыгрыша: +${digGain}% к усвоению зелья. ${fb}`
+          : `🧪 Усвоение зелья: +0% (обычное действие).`;
+        const rerollBtn = $("btn-reroll");
+        const canReroll = !r.success && STATE.session && STATE.session.fate_tokens > 0 && !data.combat_started;
+        rerollBtn.classList.toggle("hidden", !canReroll);
+      }).catch((err) => {
+        if (err && err.status === 402) { closeDiceModal(); switchTab("shop"); return; }
+        $("dice-potion-note").textContent = `⚠ ${err && err.message}`;
+      }).finally(() => {
+        const okBtn = $("btn-dice-ok");
+        okBtn.disabled = false;
+        okBtn.textContent = "Продолжить (ОК)";
+        okBtn.classList.remove("hidden");
+      });
+    }
+
+    async function _fireStoryTurn(r, optionId, isReroll, freeText) {
+      return apiFetch("/api/story/turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: USER_ID,
+          option_id: optionId,
+          free_text: freeText,
+          intent: CURRENT_INTENT,
+          reroll: isReroll,
+          pre_rolled: { roll: r, picked: { id: optionId, text: r.action_text, skill: r.skill_key, dc: r.dc } }
+        })
+      });
+    }
+
+    async function doStoryTurn(optionId, isReroll, freeText = null) {
+      // Самый первый вход в сюжет (открытие Главы 1 без проверки навыка)
+      if (!optionId && !freeText && !isReroll) {
+        $("story-text").textContent = "Серый туман расступается, открывая первую главу...";
+        $("story-text").classList.add("is-muted");
+        try {
+          const data = await apiFetch("/api/story/turn", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: USER_ID })
+          });
+          STATE = data.state;
+          renderState();
+        } catch (err) {
+          if (err.status === 402) { switchTab("shop"); return; }
+          $("story-text").textContent = `⚠ ${err.message}`;
+          $("story-text").classList.remove("is-muted");
+        }
+        return;
+      }
+
+      // Такт 1: мгновенный расчёт броска D20 — куб ещё НЕ крутится, ждём клика игрока
+      let pre;
+      try {
+        pre = await apiFetch("/api/story/roll", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: USER_ID,
+            option_id: optionId,
+            free_text: freeText,
+            intent: CURRENT_INTENT,
+            reroll: isReroll
+          })
+        });
+      } catch (err) {
+        if (err.status === 402) { closeDiceModal(); switchTab("shop"); return; }
+        alert(err.message);
+        return;
+      }
+      showDiceReady(pre.roll, optionId, isReroll, freeText);
+    }
+    async function sendFreeText() {
+      const inp = $("free-input");
+      const txt = inp.value.trim();
+      if (!txt) return;
+      inp.value = "";
+      const enemy = (STATE && STATE.session && STATE.session.enemy) || {};
+      if (enemy.hp && enemy.hp > 0) {
+        await combatAction("stunt", txt);
+      } else {
+        await doStoryTurn(null, false, txt);
+      }
+    }
+
+    async function combatAction(kind, stuntText = null) {
+let data;
+      try {
+        data = await apiFetch("/api/combat/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: USER_ID, kind: kind, stunt_text: stuntText })
+        });
+      } catch (err) {
+        $("story-text").textContent = `⚠ ${err.message}`; $("story-text").classList.remove("is-muted");
+        return;
+      }
+      STATE = data.state;
+      renderState();
+      if (data.log && data.log.length) {
+        $("story-text").textContent = data.log.join("\n\n"); $("story-text").classList.remove("is-muted");
+      }
+    }
+
+    async function buyStarsPack(packId) {
+let data;
+      try {
+        data = await apiFetch("/api/shop/invoice", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: USER_ID, pack_id: packId })
+        });
+      } catch (err) {
+        alert("Используй команду /shop в Telegram для прямой оплаты!");
+        return;
+      }
+      if (tg && tg.openInvoice) {
+        tg.openInvoice(data.invoice_link, async (status) => {
+          if (status === "paid") await loadState();
+        });
+      } else {
+        window.open(data.invoice_link, "_blank");
+      }
+    }
+
+    initApp().catch((err) => {
+      console.error(err);
+      $("story-text").textContent = "Связь с Архивом прервана. Обнови страницу через минуту."; $("story-text").classList.add("is-muted");
+    });
+  </script>
+</body>
+</html>

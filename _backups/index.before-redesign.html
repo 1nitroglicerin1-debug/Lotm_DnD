@@ -1,0 +1,1316 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#090A0F" />
+  <title>Повелитель Тайн — Терминал Потустороннего</title>
+  
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-void: #090A0F;
+      --bg-panel: #11131A;
+      --bg-card: #161922;
+      --bg-well: #0C0D12;
+      --ink: #E6DCC6;
+      --ink-dim: #9E9480;
+      --ink-faint: #6A6354;
+      --gold: #C29B38;
+      --gold-hi: #E2C26A;
+      --brass: #3A3222;
+      --brass-border: #2A2418;
+      --patina: #4D8676;
+      --patina-hi: #8FBCAE;
+      --blood: #A3262A;
+      --blood-hi: #D4675E;
+      --astral: #3B8EA5;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    .hidden { display: none !important; }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; background: none; border: none; }
+
+    html { background: var(--bg-void); }
+    body {
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 18px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      background:
+        radial-gradient(1200px 500px at 50% -100px, rgba(194, 155, 56, 0.08), transparent 70%),
+        radial-gradient(1000px 700px at 0% 100%, rgba(30, 34, 48, 0.25), transparent 75%),
+        linear-gradient(180deg, #10121A 0%, var(--bg-void) 100%);
+      background-attachment: fixed;
+    }
+
+    .wrap {
+      width: 100%;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 0 16px;
+    }
+
+    /* ---------- Шрифты и Типографика ---------- */
+    .eyebrow {
+      display: block;
+      font-family: 'Courier Prime', monospace;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+    }
+    .title {
+      font-family: 'Cinzel', Georgia, serif;
+      font-weight: 700;
+      color: var(--gold-hi);
+      letter-spacing: 0.06em;
+      line-height: 1.25;
+    }
+    .title--xl { font-size: clamp(24px, 3.5vw, 32px); }
+    .title--md { font-size: 16px; text-transform: uppercase; letter-spacing: 0.12em; }
+    .title--sm { font-size: 12px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--gold); }
+    .mono { font-family: 'Courier Prime', monospace; }
+    .italic-note { font-style: italic; color: var(--ink-dim); }
+
+    /* ---------- Панели и Кнопки ---------- */
+    .plate {
+      position: relative;
+      background: var(--bg-panel);
+      border: 1px solid var(--brass);
+      border-radius: 2px;
+      padding: 20px;
+      box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.6);
+    }
+    .plate--tight { padding: 14px 16px; }
+    .plate--blood { border-color: rgba(163, 38, 42, 0.6); background: #140F11; }
+    .plate-head {
+      padding-bottom: 12px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--brass-border);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border: 1px solid var(--gold);
+      border-radius: 2px;
+      color: var(--gold-hi);
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      transition: all 0.15s ease;
+    }
+    .btn:hover { background: var(--gold); color: #0C0A06; }
+    .btn--primary { width: 100%; padding: 14px 20px; border: 2px double var(--gold); }
+    .btn--sm { padding: 6px 12px; font-size: 11px; }
+    .btn--blood { border-color: var(--blood); color: var(--blood-hi); }
+    .btn--blood:hover { background: var(--blood); color: #FFF; }
+    .btn--patina { border-color: var(--patina); color: var(--patina-hi); }
+    .btn--patina:hover { background: var(--patina); color: #090A0F; }
+
+    /* ---------- Верхний Хедер (HUD) ---------- */
+    .hud {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      background: rgba(9, 10, 15, 0.95);
+      border-bottom: 1px solid var(--brass);
+      backdrop-filter: blur(8px);
+      padding: 10px 0;
+    }
+    .hud-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+    .hud-title {
+      font-family: 'Cinzel', serif;
+      font-weight: 800;
+      font-size: 15px;
+      color: var(--gold-hi);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .hud-counters {
+      display: flex;
+      gap: 10px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: var(--bg-well);
+      border: 1px solid var(--brass);
+      font-family: 'Courier Prime', monospace;
+      font-size: 13px;
+      color: var(--ink);
+    }
+    .badge b { color: var(--gold-hi); }
+
+    /* ---------- Трёхколоночный Bento-кокпит ---------- */
+    .cockpit {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+      padding: 20px 0 100px;
+    }
+    @media (min-width: 1024px) {
+      .cockpit {
+        grid-template-columns: 310px minmax(0, 1fr) 330px;
+        align-items: start;
+        padding-bottom: 40px;
+      }
+      .col-sticky {
+        position: sticky;
+        top: 65px;
+        max-height: calc(100vh - 80px);
+        overflow-y: auto;
+      }
+    }
+
+    /* ---------- Бары Здоровья, Рассудка, Зелья ---------- */
+    .bars { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+    .bar-row { display: flex; justify-content: space-between; font-size: 13px; font-family: 'Cinzel', serif; margin-bottom: 2px; }
+    .tube {
+      height: 7px;
+      background: #08080C;
+      border: 1px solid var(--brass);
+      border-radius: 1px;
+      overflow: hidden;
+    }
+    .tube-fill { height: 100%; transition: width 0.4s ease; }
+    .tube-fill--hp { background: linear-gradient(90deg, #822225, #B83A3F); }
+    .tube-fill--san { background: linear-gradient(90deg, #2B6170, #4DA5BD); }
+    .tube-fill--dig { background: linear-gradient(90deg, #A88126, #E5C368); }
+
+    /* Характеристики (Point-Buy / Статы) */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .stat-box {
+      background: var(--bg-well);
+      border: 1px solid var(--brass-border);
+      text-align: center;
+      padding: 6px 4px;
+    }
+    .stat-k { font-size: 10px; font-family: 'Cinzel', serif; color: var(--ink-faint); display: block; }
+    .stat-v { font-size: 20px; font-family: 'Courier Prime', monospace; font-weight: 700; color: var(--gold-hi); line-height: 1.1; }
+    .stat-m { font-size: 12px; font-family: 'Courier Prime', monospace; color: var(--ink-dim); }
+
+    /* ---------- Нарратив, Сцена и Опции ---------- */
+    .scene-box {
+      background: #0E0F16;
+      border: 1px solid var(--brass);
+      padding: 28px 24px;
+      min-height: 360px;
+    }
+    .narrative-p {
+      margin-bottom: 16px;
+      line-height: 1.75;
+      font-size: 20px;
+      color: #E8E2D3;
+    }
+    .quote-text { color: #F0D9A4; font-weight: 600; }
+    .disco-voice {
+      display: block;
+      margin: 12px 0;
+      padding: 8px 14px;
+      background: rgba(194, 155, 56, 0.05);
+      border-left: 2px solid var(--gold);
+      font-style: italic;
+      color: #CFC5B0;
+    }
+
+    .options { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+    .choice-card {
+      display: grid;
+      grid-template-columns: 48px 1fr auto;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--brass);
+      padding: 12px 16px;
+      text-align: left;
+      transition: all 0.15s ease;
+    }
+    .choice-card:hover {
+      background: #1D212E;
+      border-color: var(--gold);
+      transform: translateX(3px);
+    }
+    .choice-num {
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 18px;
+      color: var(--gold);
+      text-align: center;
+    }
+    .choice-text { font-size: 18px; color: var(--ink); }
+    .choice-tag {
+      font-family: 'Courier Prime', monospace;
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 2px;
+      border: 1px solid;
+    }
+    .tag-green { color: var(--patina-hi); border-color: rgba(77, 134, 118, 0.6); }
+    .tag-amber { color: #E5B25D; border-color: rgba(229, 178, 93, 0.6); }
+    .tag-red { color: var(--blood-hi); border-color: rgba(163, 38, 42, 0.6); }
+
+    /* Док свободного ввода */
+    .dock {
+      margin-top: 16px;
+      background: var(--bg-panel);
+      border: 1px solid var(--brass);
+      padding: 12px;
+    }
+    .intents {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .intent-btn {
+      padding: 6px 4px;
+      font-family: 'Cinzel', serif;
+      font-size: 11px;
+      text-transform: uppercase;
+      text-align: center;
+      border: 1px solid var(--brass-border);
+      color: var(--ink-dim);
+    }
+    .intent-btn.is-active {
+      border-color: var(--gold);
+      background: rgba(194, 155, 56, 0.15);
+      color: var(--gold-hi);
+      font-weight: 700;
+    }
+    .input-row { display: flex; gap: 8px; }
+    .input {
+      flex: 1;
+      background: var(--bg-well);
+      border: 1px solid var(--brass);
+      padding: 10px 14px;
+      color: var(--ink);
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 18px;
+      outline: none;
+    }
+    .input:focus { border-color: var(--gold); }
+
+    /* ---------- Бой ---------- */
+    .combat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    /* ---------- Модальное окно Броска D20 (BG3) ---------- */
+    .d20-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(5, 6, 9, 0.92);
+      backdrop-filter: blur(8px);
+      animation: fadeIn 0.15s ease-out;
+    }
+    .d20-modal {
+      width: 100%;
+      max-width: 440px;
+      background: linear-gradient(180deg, #161822 0%, #0D0E14 100%);
+      border: 2px solid var(--gold);
+      padding: 24px;
+      text-align: center;
+      box-shadow: 0 0 50px rgba(0, 0, 0, 0.9);
+    }
+    .d20-shield {
+      display: inline-block;
+      padding: 6px 20px;
+      background: #0B0C10;
+      border: 1px solid var(--brass);
+      margin: 10px 0;
+    }
+    .d20-shield-val { font-family: 'Cinzel', serif; font-size: 26px; font-weight: 800; color: var(--gold-hi); }
+    .d20-stage {
+      position: relative;
+      width: 170px;
+      height: 170px;
+      margin: 12px auto;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .d20-svg {
+      width: 155px;
+      height: 155px;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .d20-stage.is-ready:hover .d20-svg { transform: scale(1.08); }
+    .d20-svg.is-rolling { animation: rollHeavy 1.8s cubic-bezier(0.12, 0.8, 0.22, 1) forwards; }
+    .d20-svg.is-absorb { transform: scale(1.18); filter: drop-shadow(0 0 20px var(--gold-hi)); }
+    @keyframes rollHeavy {
+      0% { transform: rotate(-540deg) scale(0.7); }
+      70% { transform: rotate(30deg) scale(1.05); }
+      100% { transform: rotate(0deg) scale(1); }
+    }
+    .d20-pill {
+      display: inline-block;
+      margin: 3px;
+      padding: 4px 10px;
+      background: #0A0B0F;
+      border: 1px solid var(--brass);
+      font-family: 'Courier Prime', monospace;
+      font-size: 13px;
+    }
+    .d20-pill.is-firing { border-color: var(--gold-hi); background: rgba(226, 194, 106, 0.2); }
+    .d20-verdict { font-family: 'Cinzel', serif; font-size: 22px; font-weight: 700; margin: 12px 0 6px; }
+
+    /* ---------- Конструктор Персонажа ---------- */
+    .builder-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 90;
+      background: var(--bg-void);
+      overflow-y: auto;
+      padding: 30px 16px 80px;
+    }
+    .builder-card { max-width: 820px; margin: 0 auto; }
+    .pb-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: var(--bg-well);
+      border: 1px solid var(--brass-border);
+      margin-bottom: 6px;
+    }
+    .pb-ctrl { display: flex; align-items: center; gap: 12px; }
+    .pb-btn {
+      width: 28px; height: 28px;
+      border: 1px solid var(--brass);
+      color: var(--gold-hi);
+      font-weight: 700;
+    }
+    .sk-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 6px;
+      max-height: 260px;
+      overflow-y: auto;
+      margin-top: 8px;
+    }
+    .sk-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: var(--bg-well);
+      border: 1px solid var(--brass-border);
+      font-size: 15px;
+    }
+    .sk-item.is-picked { border-color: var(--gold); background: rgba(194, 155, 56, 0.1); }
+    .sk-item.is-exp { border-color: var(--gold-hi); background: rgba(226, 194, 106, 0.2); }
+
+    /* Нижний мобильный таббар */
+    .tabbar {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      z-index: 50;
+      background: #0B0C10;
+      border-top: 1px solid var(--brass);
+      display: flex;
+      justify-content: space-around;
+      padding: 8px 0 env(safe-area-inset-bottom);
+    }
+    .tab-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: 'Cinzel', serif;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+    }
+    .tab-btn.is-active { color: var(--gold-hi); font-weight: 700; }
+    @media (min-width: 1024px) {
+      .tabbar { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ВЕРХНИЙ ХЕДЕР -->
+  <header class="hud">
+    <div class="wrap hud-row">
+      <div>
+        <div id="hud-name" class="hud-title">Архив Серого Тумана</div>
+        <div id="hud-sub" class="eyebrow">Загрузка данных...</div>
+      </div>
+      <div class="hud-counters">
+        <div class="badge" title="Ходы ИИ-Мастера">⚡ <b id="hud-turns">0</b></div>
+        <div class="badge" title="Печати Судьбы">🎲 <b id="hud-fate">0</b></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ОСНОВНОЙ КОКПИТ -->
+  <main class="wrap cockpit">
+
+    <!-- ЛЕВАЯ КОЛОНКА: ЛИСТ ПОТУСТОРОННЕГО -->
+    <aside id="col-hero" class="col-sticky plate">
+      <div class="plate-head" style="display:flex;justify-content:space-between;align-items:baseline;">
+        <span class="eyebrow">Досье Героя</span>
+        <button onclick="openBuilder()" class="eyebrow" style="cursor:pointer;color:var(--gold);">Пересоздать</button>
+      </div>
+
+      <div class="bars">
+        <div>
+          <div class="bar-row"><span>Здоровье</span><b id="bar-hp-txt">0/0</b></div>
+          <div class="tube"><div id="bar-hp-fill" class="tube-fill tube-fill--hp"></div></div>
+        </div>
+        <div>
+          <div class="bar-row"><span>Рассудок</span><b id="bar-san-txt">100%</b></div>
+          <div class="tube"><div id="bar-san-fill" class="tube-fill tube-fill--san"></div></div>
+        </div>
+        <div>
+          <div class="bar-row"><span>Переваривание</span><b id="bar-dig-txt">0%</b></div>
+          <div class="tube"><div id="bar-dig-fill" class="tube-fill tube-fill--dig"></div></div>
+        </div>
+      </div>
+
+      <div id="hero-stats" class="stats-grid"></div>
+
+      <div style="margin-top:16px;">
+        <span class="title--sm">Способности Пути</span>
+        <div id="hero-abilities" style="margin-top:8px;font-size:15px;display:flex;flex-direction:column;gap:6px;"></div>
+      </div>
+
+      <div style="margin-top:16px;">
+        <span class="title--sm">Запечатанные Артефакты</span>
+        <div id="hero-artifacts" style="margin-top:8px;font-size:14px;"></div>
+      </div>
+    </aside>
+
+    <!-- ЦЕНТРАЛЬНАЯ КОЛОНКА: СЮЖЕТ И БОЙ -->
+    <section id="col-story">
+      <!-- Локация и Арка -->
+      <div class="plate plate--tight" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <span class="eyebrow" id="scene-loc">Тинген</span>
+          <div id="scene-arc" class="italic-note" style="font-size:15px;">Загрузка расследования...</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button onclick="combatAction('start_hunt')" class="btn btn--sm btn--blood">Охота</button>
+          <button onclick="combatAction('rest')" class="btn btn--sm btn--patina">Отдых</button>
+        </div>
+      </div>
+
+      <!-- Боевой Модуль (скрыт вне боя) -->
+      <div id="combat-box" class="plate plate--blood hidden" style="margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <b id="enemy-name" style="color:var(--blood-hi);font-family:'Cinzel',serif;">Враг</b>
+          <span id="enemy-hp" class="badge">ОЗ 0/0</span>
+        </div>
+        <p id="enemy-desc" class="italic-note" style="margin:6px 0 10px;font-size:15px;"></p>
+        <div class="combat-grid">
+          <button onclick="combatAction('cantrip')" class="btn btn--sm">I. Заговор</button>
+          <button onclick="combatAction('mech')" class="btn btn--sm">II. Механика</button>
+          <button onclick="combatAction('myth')" class="btn btn--sm">III. Форма</button>
+          <button onclick="combatAction('flee')" class="btn btn--sm btn--blood">IV. Отступить</button>
+        </div>
+      </div>
+
+      <!-- Свиток Текста -->
+      <article class="scene-box">
+        <div id="narrative-content">Шагните в туман, чтобы начать расследование...</div>
+      </article>
+
+      <!-- Варианты Действий -->
+      <div id="scene-options" class="options"></div>
+
+      <!-- Док Свободного Ввода -->
+      <div class="dock">
+        <div class="intents">
+          <button onclick="setIntent('act')" id="int-act" class="intent-btn is-active">⚔️ Действие</button>
+          <button onclick="setIntent('talk')" id="int-talk" class="intent-btn">💬 Реплика</button>
+          <button onclick="setIntent('inspect')" id="int-inspect" class="intent-btn">👁 Осмотр</button>
+          <button onclick="setIntent('skill')" id="int-skill" class="intent-btn">✨ Магия</button>
+        </div>
+        <div class="input-row">
+          <input id="free-input" type="text" class="input" placeholder="Опиши действие или безумный трюк..." onkeydown="if(event.key==='Enter') sendFreeAction()" />
+          <button onclick="sendFreeAction()" class="btn">Ход</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ПРАВАЯ КОЛОНКА: АРХИВ ДЕЛА И МАГАЗИН -->
+    <aside id="col-archive" class="col-sticky plate">
+      <span class="eyebrow">Записная Книжка</span>
+      <div style="margin:8px 0 14px;">
+        <span class="title--sm">Заповедь Метода Отыгрыша</span>
+        <p id="j-principle" class="italic-note" style="margin-top:4px;font-size:16px;"></p>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <span class="title--sm">Улики и Капитал</span>
+        <ul id="j-clues" style="list-style:none;margin-top:4px;font-size:15px;"></ul>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <span class="title--sm">Персоны (NPC)</span>
+        <ul id="j-npcs" style="list-style:none;margin-top:4px;font-size:15px;"></ul>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <span class="title--sm">Цепочка Последствий</span>
+        <ul id="j-consequences" style="list-style:none;margin-top:4px;font-size:15px;"></ul>
+      </div>
+
+      <button onclick="openShop()" class="btn btn--primary" style="margin-top:10px;">Святилище (Магазин)</button>
+    </aside>
+
+  </main>
+
+  <!-- МОДАЛЬНОЕ ОКНО БРОСКА D20 (BG3 STYLE) -->
+  <div id="dice-modal" class="d20-overlay hidden">
+    <div class="d20-modal">
+      <span class="eyebrow">Проверка Судьбы</span>
+      <div id="d20-skill-name" class="title title--md" style="margin-top:4px;">Криминалистика</div>
+      <div id="d20-action-text" class="italic-note" style="margin-top:2px;font-size:15px;"></div>
+
+      <div class="d20-shield">
+        <span class="eyebrow">Сложность</span>
+        <div id="d20-dc-val" class="d20-shield-val">12</div>
+      </div>
+
+      <div id="d20-stage" class="d20-stage is-ready" onclick="onUserClickRoll()">
+        <svg id="d20-svg" class="d20-svg" viewBox="0 0 200 200">
+          <defs>
+            <linearGradient id="fFace" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#2D2838" />
+              <stop offset="100%" stop-color="#14121A" />
+            </linearGradient>
+          </defs>
+          <g stroke="#C29B38" stroke-width="2" stroke-linejoin="round">
+            <polygon points="100,10 32,48 100,46" fill="#25212E" />
+            <polygon points="100,10 168,48 100,46" fill="#1C1824" />
+            <polygon points="32,48 18,122 52,130" fill="#16131C" />
+            <polygon points="32,48 100,46 52,130" fill="#2D2838" />
+            <polygon points="168,48 100,46 148,130" fill="#1E1A26" />
+            <polygon points="168,48 182,122 148,130" fill="#120F17" />
+            <polygon points="18,122 52,130 42,168" fill="#16131D" />
+            <polygon points="182,122 148,130 158,168" fill="#0C0A0F" />
+            <polygon points="52,130 148,130 100,190" fill="#191522" />
+            <polygon points="52,130 42,168 100,190" fill="#100D16" />
+            <polygon points="148,130 158,168 100,190" fill="#0B090F" />
+            <polygon points="100,46 52,130 148,130" fill="url(#fFace)" stroke="#E2C26A" stroke-width="2.6" />
+          </g>
+          <text id="d20-number" x="100" y="114" text-anchor="middle" fill="#E2C26A" font-family="'Cinzel', serif" font-weight="800" font-size="34">20</text>
+        </svg>
+      </div>
+
+      <div id="d20-bonuses" style="min-height:36px;margin-bottom:8px;"></div>
+      <div id="d20-verdict" class="d20-verdict">Нажми на кость для броска</div>
+      <div id="d20-feedback" class="italic-note" style="min-height:24px;font-size:14px;margin-bottom:12px;"></div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button id="btn-d20-reroll" onclick="triggerReroll()" class="hidden btn btn--sm btn--blood">🎲 Перебросить Судьбу (2d20)</button>
+        <button id="btn-d20-ok" onclick="closeDiceModal()" class="btn btn--primary" disabled>Бросьте кость</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- КОНСТРУКТОР ПЕРСОНАЖА -->
+  <section id="view-builder" class="builder-overlay hidden">
+    <div class="builder-card plate">
+      <div class="plate-head" style="text-align:center;">
+        <span class="eyebrow">Осень 1349 года · Ритуал Прикосновения</span>
+        <h1 class="title title--xl">Создание Потустороннего</h1>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <label class="title--sm">Имя Персонажа</label>
+        <input id="b-name" type="text" class="input" style="width:100%;margin-top:4px;" placeholder="Например: Артур Моретти" />
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <label class="title--sm">Путь Возвышения (из 22 Путей)</label>
+        <select id="b-pathway" class="input" style="width:100%;margin-top:4px;" onchange="onBuilderPathwayChange()"></select>
+        <div id="b-pathway-preview" class="italic-note" style="margin-top:4px;font-size:15px;"></div>
+      </div>
+
+      <div id="b-branch-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div>
+          <label class="title--sm">Происхождение (16 вариантов)</label>
+          <select id="b-bg" class="input" style="width:100%;margin-top:4px;" onchange="onBuilderBgChange()"></select>
+        </div>
+        <div>
+          <label class="title--sm">Стартовый Регион</label>
+          <select id="b-region" class="input" style="width:100%;margin-top:4px;"></select>
+        </div>
+      </div>
+
+      <!-- Point-Buy 27 -->
+      <div style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;">
+          <label class="title--sm">Характеристики (Point-Buy)</label>
+          <span id="pb-budget-label" class="eyebrow" style="color:var(--gold-hi);">Осталось очков: 27/27</span>
+        </div>
+        <div id="pb-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;"></div>
+      </div>
+
+      <!-- Навыки -->
+      <div style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;">
+          <label class="title--sm">Навыки и ★ Компетенция (x2)</label>
+          <span id="sk-budget-label" class="eyebrow"></span>
+        </div>
+        <div id="sk-grid" class="sk-grid"></div>
+      </div>
+
+      <!-- Анкета -->
+      <div style="margin-bottom:16px;">
+        <label class="title--sm">Личная Анкета / Квента (по желанию)</label>
+        <textarea id="b-bio" class="input" rows="3" style="width:100%;margin-top:4px;" placeholder="Опиши прошлое, цели или тайны. ИИ построит сюжет специально вокруг твоей анкеты!"></textarea>
+      </div>
+
+      <button onclick="submitBuilder()" class="btn btn--primary">Принять зелье и начать игру</button>
+    </div>
+  </section>
+
+  <!-- МОДАЛКА МАГАЗИНА СВЯТИЛИЩА -->
+  <div id="shop-modal" class="d20-overlay hidden">
+    <div class="d20-modal plate" style="max-width:480px;">
+      <span class="eyebrow">Святилище Серого Тумана</span>
+      <h2 class="title title--md" style="margin:6px 0 14px;">Пополнение Духовности</h2>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div class="plate plate--tight" style="display:flex;justify-content:space-between;align-items:center;">
+          <div style="text-align:left;">
+            <b>40 Ходов Духовности</b>
+            <div class="italic-note" style="font-size:14px;">Мгновенно +40 ходов Мастера</div>
+          </div>
+          <button onclick="buyPack('turns_40')" class="btn btn--sm">65 ⭐️</button>
+        </div>
+        <div class="plate plate--tight" style="display:flex;justify-content:space-between;align-items:center;">
+          <div style="text-align:left;">
+            <b>5 Печатей Судьбы</b>
+            <div class="italic-note" style="font-size:14px;">Переброс d20 с Преимуществом + Отхил</div>
+          </div>
+          <button onclick="buyPack('fate_pack')" class="btn btn--sm">55 ⭐️</button>
+        </div>
+        <div class="plate plate--tight" style="display:flex;justify-content:space-between;align-items:center;">
+          <div style="text-align:left;">
+            <b>Запечатанный Артефакт</b>
+            <div class="italic-note" style="font-size:14px;">Реликвия в билд + 25 ходов</div>
+          </div>
+          <button onclick="buyPack('artifact_box')" class="btn btn--sm">110 ⭐️</button>
+        </div>
+        <div class="plate plate--tight" style="display:flex;justify-content:space-between;align-items:center;border-color:var(--gold);">
+          <div style="text-align:left;">
+            <b style="color:var(--gold-hi);">«Святилище» (VIP 30 дней)</b>
+            <div class="italic-note" style="font-size:14px;">450 ходов, глубокая память ИИ</div>
+          </div>
+          <button onclick="buyPack('vip_30')" class="btn btn--sm">390 ⭐️</button>
+        </div>
+      </div>
+      <a id="tribute-link" href="#" target="_blank" class="btn btn--sm btn--patina hidden" style="width:100%;margin-top:12px;">Оплатить картой (Tribute)</a>
+      <button onclick="closeShop()" class="btn btn--sm" style="margin-top:10px;width:100%;">Закрыть</button>
+    </div>
+  </div>
+
+  <!-- МОДАЛКА DEV CHEAT (GOD MODE) -->
+  <div id="dev-modal" class="d20-overlay hidden">
+    <div class="d20-modal plate" style="max-width:480px;">
+      <span class="eyebrow" style="color:var(--blood-hi);">Только для разработчика</span>
+      <h2 class="title title--md" style="margin:4px 0 12px;">⚙️ GOD MODE</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+        <button onclick="callCheat('inf_resources')" class="btn btn--sm">+9999 Ходов & VIP</button>
+        <button onclick="callCheat('full_heal')" class="btn btn--sm btn--patina">Полный Отхил</button>
+        <button onclick="callCheat('max_digestion')" class="btn btn--sm">Зелье 100%</button>
+        <button onclick="callCheat('add_gold')" class="btn btn--sm">+10 000 Фунтов</button>
+        <button onclick="callCheat('kill_enemy')" class="btn btn--sm btn--blood">Убить Врага</button>
+        <button onclick="callCheat('grant_test_artifact')" class="btn btn--sm">Выдать Артефакт</button>
+      </div>
+      <div style="margin-top:10px;text-align:left;">
+        <span class="eyebrow">Установить Последовательность:</span>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
+          <button onclick="callCheat('set_seq', 9)" class="btn btn--sm">9</button>
+          <button onclick="callCheat('set_seq', 7)" class="btn btn--sm">7</button>
+          <button onclick="callCheat('set_seq', 5)" class="btn btn--sm">5</button>
+          <button onclick="callCheat('set_seq', 4)" class="btn btn--sm">4 (Святой)</button>
+          <button onclick="callCheat('set_seq', 2)" class="btn btn--sm">2 (Ангел)</button>
+          <button onclick="callCheat('set_seq', 0)" class="btn btn--sm btn--blood">0 (Бог)</button>
+        </div>
+      </div>
+      <button onclick="closeDevModal()" class="btn btn--sm" style="width:100%;margin-top:14px;">Закрыть</button>
+    </div>
+  </div>
+
+  <!-- МОБИЛЬНЫЙ ТАББАР -->
+  <nav class="tabbar">
+    <button onclick="switchMobileTab('col-story')" id="tab-btn-story" class="tab-btn is-active">🌫 Сюжет</button>
+    <button onclick="switchMobileTab('col-hero')" id="tab-btn-hero" class="tab-btn">👤 Герой</button>
+    <button onclick="switchMobileTab('col-archive')" id="tab-btn-archive" class="tab-btn">📓 Дело</button>
+    <button onclick="openShop()" class="tab-btn">🏛 Магазин</button>
+    <button id="tab-btn-dev" onclick="openDevModal()" class="tab-btn hidden" style="color:var(--blood-hi);">⚙️ DEV</button>
+  </nav>
+
+  <!-- СВЯЗКА JS С БЭКЕНДОМ FASTAPI -->
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    if (tg) { tg.ready(); tg.expand(); }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    let USER_ID = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id)
+      ? tg.initDataUnsafe.user.id
+      : parseInt(urlParams.get("uid") || localStorage.getItem("lotm_uid") || "", 10);
+
+    if (!USER_ID || isNaN(USER_ID)) {
+      USER_ID = 900000000 + Math.floor(Math.random() * 900000000);
+    }
+    localStorage.setItem("lotm_uid", USER_ID);
+
+    let META = null;
+    let STATE = null;
+    let CURRENT_INTENT = "act";
+    let CURRENT_ROLL_DATA = null;
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const strip = (s) => String(s ?? "").replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, "").replace(/\s+/g, " ").trim();
+    const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
+
+    async function apiFetch(url, options = {}) {
+      const res = await fetch(url, options);
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch (e) { data = null; }
+      if (!res.ok) {
+        const msg = (data && (data.detail || data.message)) || text || res.statusText;
+        const err = new Error(msg);
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    }
+
+    /* Инициализация приложения */
+    async function initApp() {
+      try {
+        META = await apiFetch("/api/meta");
+        if (META.tribute_link) {
+          $("tribute-link").href = META.tribute_link;
+          $("tribute-link").classList.remove("hidden");
+        }
+        await loadState();
+      } catch (err) {
+        console.error(err);
+        $("narrative-content").textContent = `Ошибка связи с сервером: ${err.message}`;
+      }
+    }
+
+    async function loadState() {
+      STATE = await apiFetch(`/api/state/${USER_ID}`);
+      renderState();
+    }
+
+    function renderState() {
+      if (!STATE.has_character) {
+        openBuilder();
+        return;
+      }
+      closeBuilder();
+
+      const c = STATE.character;
+      const s = STATE.session;
+
+      $("hud-name").textContent = `${c.name} · ${strip(c.pathway_name)}`;
+      $("hud-sub").textContent = `Посл. ${c.sequence} «${strip(c.seq_title)}» · КД ${c.effective_ac}`;
+      $("hud-turns").textContent = s.turns_left;
+      $("hud-fate").textContent = s.fate_tokens;
+
+      // Бары
+      const hpPct = Math.max(0, Math.min(100, (c.hp / (c.max_hp || 1)) * 100));
+      $("bar-hp-txt").textContent = `${c.hp}/${c.max_hp}`;
+      $("bar-hp-fill").style.width = `${hpPct}%`;
+
+      $("bar-san-txt").textContent = `${c.sanity}%`;
+      $("bar-san-fill").style.width = `${c.sanity}%`;
+
+      $("bar-dig-txt").textContent = `${c.digestion}%`;
+      $("bar-dig-fill").style.width = `${c.digestion}%`;
+
+      // Статы
+      const abNames = { str: "СИЛ", dex: "ЛОВ", con: "ТЕЛ", int: "ИНТ", wis: "МУД", cha: "ХАР" };
+      $("hero-stats").innerHTML = Object.entries(c.stats || {}).map(([k, v]) => {
+        const mod = Math.floor((v - 10) / 2);
+        return `<div class="stat-box"><span class="stat-k">${abNames[k] || k}</span><span class="stat-v">${v}</span><span class="stat-m">${signed(mod)}</span></div>`;
+      }).join("");
+
+      // Способности
+      $("hero-abilities").innerHTML = (c.abilities || []).map(a =>
+        `<div><b>${esc(strip(a.name))}</b> <span class="eyebrow" style="display:inline;">Посл. ${a.seq}</span><div class="italic-note" style="font-size:13px;">${esc(a.desc)}</div></div>`
+      ).join("") || "<div>Нет способностей</div>";
+
+      // Артефакты
+      $("hero-artifacts").innerHTML = (c.artifacts || []).map(art =>
+        `<div style="padding:6px 0;border-bottom:1px dotted var(--brass-border);"><b>${esc(art.name)}</b> <span style="color:var(--patina-hi);font-size:12px;">(+${art.bonus})</span><div class="italic-note" style="font-size:12px;color:var(--blood-hi);">${esc(art.curse || '')}</div></div>`
+      ).join("") || "<div class='italic-note'>Артефакты отсутствуют</div>";
+
+      // Сцена
+      $("scene-loc").textContent = strip(s.location || "Тинген");
+      $("scene-arc").textContent = s.current_arc || "Расследование в тумане";
+
+      // Текст истории
+      if (s.last_narrative) {
+        $("narrative-content").innerHTML = formatNarrative(s.last_narrative);
+      }
+
+      // Бой
+      const enemy = s.enemy || {};
+      const inCombat = enemy.hp && enemy.hp > 0;
+      $("combat-box").classList.toggle("hidden", !inCombat);
+      if (inCombat) {
+        $("enemy-name").textContent = `${strip(enemy.name)} · Посл. ${enemy.seq || 9}`;
+        $("enemy-hp").textContent = `ОЗ ${enemy.hp}/${enemy.max_hp}`;
+        $("enemy-desc").textContent = enemy.desc || "";
+      }
+
+      // Карточки выбора
+      const optBox = $("scene-options");
+      if (inCombat) {
+        optBox.innerHTML = "";
+      } else if (!s.enriched_options || !s.enriched_options.length) {
+        optBox.innerHTML = `<button onclick="doTurn(null, false)" class="btn btn--primary">Шагнуть в туман</button>`;
+      } else {
+        optBox.innerHTML = s.enriched_options.map((o, idx) => {
+          const dc = Number(o.dc) || 12;
+          const bon = Number(o.player_bonus) || 0;
+          // Расчет шанса успеха BG3
+          let chance = Math.min(95, Math.max(5, (21 - (dc - bon)) * 5));
+          const tagClass = chance >= 70 ? "tag-green" : (chance >= 45 ? "tag-amber" : "tag-red");
+          return `<button onclick="doTurn(${o.id}, false)" class="choice-card">
+            <span class="choice-num">${idx + 1}</span>
+            <span class="choice-text">${esc(o.text)}</span>
+            <span class="choice-tag ${tagClass}">${strip(o.skill_name || o.skill)} ${signed(bon)} · ${chance}%</span>
+          </button>`;
+        }).join("");
+      }
+
+      // Дневник
+      $("j-principle").textContent = c.acting_principle || "Отыгрывай роль своей Последовательности.";
+      $("j-clues").innerHTML = (s.clues || []).map(x => `<li>• ${esc(x)}</li>`).join("") || "<li>—</li>";
+      $("j-npcs").innerHTML = (s.npcs || []).map(x => `<li>• ${esc(x)}</li>`).join("") || "<li>—</li>";
+      $("j-consequences").innerHTML = (s.consequences || []).map(x => {
+        const who = x.target ? `<b>${esc(x.target)}:</b> ` : "";
+        return `<li>• ${who}${esc(x.event || x)}</li>`;
+      }).join("") || "<li>—</li>";
+
+      // Dev-кнопка
+      const isDev = !!STATE.is_dev;
+      $("tab-btn-dev").classList.toggle("hidden", !isDev);
+    }
+
+    function formatNarrative(text) {
+      return text.split("\n\n").map(para => {
+        let p = esc(para);
+        p = p.replace(/«([^»]+)»/g, '<span class="quote-text">«$1»</span>');
+        p = p.replace(/\[([^\]]+)\]/g, '<span class="disco-voice">[$1]</span>');
+        return `<p class="narrative-p">${p}</p>`;
+      }).join("");
+    }
+
+    function setIntent(intent) {
+      CURRENT_INTENT = intent;
+      ["act", "talk", "inspect", "skill"].forEach(k => {
+        $(`int-${k}`).classList.toggle("is-active", k === intent);
+      });
+    }
+
+    /* Ход сюжета и бросок D20 */
+    async function doTurn(optionId, isReroll, freeText = null) {
+      // 1. Первый запуск главы без кубика
+      if (!optionId && !freeText && !isReroll) {
+        $("narrative-content").innerHTML = "<i>Серый туман сгущается, формируя сцену...</i>";
+        const data = await apiFetch("/api/story/turn", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: USER_ID })
+        });
+        STATE = data.state;
+        renderState();
+        return;
+      }
+
+      // 2. Фаза 1: Мгновенный бросок D20 (/api/story/roll)
+      let pre = null;
+      try {
+        pre = await apiFetch("/api/story/roll", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: USER_ID,
+            option_id: optionId,
+            free_text: freeText,
+            intent: CURRENT_INTENT,
+            reroll: isReroll
+          })
+        });
+      } catch (err) {
+        if (err.status === 402) { openShop(); return; }
+        alert(err.message);
+        return;
+      }
+
+      CURRENT_ROLL_DATA = pre.roll;
+      openDiceModal(pre.roll, async () => {
+        // Запрос к ИИ отправляется с готовым pre_rolled
+        return await apiFetch("/api/story/turn", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: USER_ID,
+            option_id: optionId,
+            free_text: freeText,
+            intent: CURRENT_INTENT,
+            reroll: isReroll,
+            pre_rolled: pre
+          })
+        });
+      });
+    }
+
+    function sendFreeAction() {
+      const inp = $("free-input");
+      const txt = inp.value.trim();
+      if (!txt) return;
+      inp.value = "";
+      doTurn(null, false, txt);
+    }
+
+    /* Модальное окно кубика D20 */
+    let _onRollComplete = null;
+    let _aiPromise = null;
+
+    function openDiceModal(r, aiCallFn) {
+      const modal = $("dice-modal");
+      modal.classList.remove("hidden");
+      $("d20-skill-name").textContent = strip(r.skill_name);
+      $("d20-action-text").textContent = `«${r.action_text}»`;
+      $("d20-dc-val").textContent = r.dc;
+      $("d20-number").textContent = "D20";
+      $("d20-bonuses").innerHTML = (r.parts || []).map(p =>
+        `<span class="d20-pill">${esc(p.label)} <b>${signed(p.value)}</b></span>`
+      ).join("");
+      $("d20-verdict").textContent = "Нажми на кость для броска";
+      $("d20-verdict").style.color = "var(--ink)";
+      $("d20-feedback").textContent = "";
+      $("btn-d20-ok").disabled = true;
+      $("btn-d20-ok").textContent = "Бросьте кость";
+      $("btn-d20-reroll").classList.add("hidden");
+
+      const stage = $("d20-stage");
+      stage.classList.add("is-ready");
+      const svg = $("d20-svg");
+      svg.classList.remove("is-rolling", "is-absorb");
+
+      _aiPromise = aiCallFn();
+    }
+
+    function onUserClickRoll() {
+      const stage = $("d20-stage");
+      if (!stage.classList.contains("is-ready")) return;
+      stage.classList.remove("is-ready");
+
+      const svg = $("d20-svg");
+      svg.classList.add("is-rolling");
+
+      const r = CURRENT_ROLL_DATA;
+      const numEl = $("d20-number");
+
+      // Циклический перебор чисел во время вращения (1.8 сек)
+      let timer = setInterval(() => {
+        numEl.textContent = 1 + Math.floor(Math.random() * 20);
+      }, 70);
+
+      setTimeout(() => {
+        clearInterval(timer);
+        let curr = r.natural;
+        numEl.textContent = curr;
+        $("d20-verdict").textContent = `На кости: ${r.natural}`;
+
+        // Пауза 1 сек на чистом броске, затем по очереди влетают бонусы
+        setTimeout(() => {
+          const parts = r.parts || [];
+          let idx = 0;
+
+          function nextPart() {
+            if (idx < parts.length) {
+              const p = parts[idx++];
+              curr += Number(p.value) || 0;
+              numEl.textContent = curr;
+
+              svg.classList.add("is-absorb");
+              setTimeout(() => svg.classList.remove("is-absorb"), 180);
+              setTimeout(nextPart, 350);
+            } else {
+              numEl.textContent = r.total;
+              const win = r.success;
+              $("d20-verdict").textContent = win ? `УСПЕХ (${r.total} ≥ Сл ${r.dc})` : `ПРОВАЛ (${r.total} < Сл ${r.dc})`;
+              $("d20-verdict").style.color = win ? "var(--patina-hi)" : "var(--blood-hi)";
+
+              // Ждём ответ ИИ
+              _aiPromise.then(res => {
+                STATE = res.state;
+                renderState();
+                const dig = Number(res.dig_gain) || 0;
+                $("d20-feedback").textContent = dig > 0
+                  ? `🧪 Метод отыгрыша: +${dig}% к перевариванию зелья!`
+                  : `🧪 Переваривание зелья: +0% (обычное действие).`;
+                $("btn-d20-ok").disabled = false;
+                $("btn-d20-ok").textContent = "Продолжить (ОК)";
+                if (!win && STATE.session.fate_tokens > 0) {
+                  $("btn-d20-reroll").classList.remove("hidden");
+                }
+              }).catch(err => {
+                $("d20-feedback").textContent = `Ошибка: ${err.message}`;
+                $("btn-d20-ok").disabled = false;
+                $("btn-d20-ok").textContent = "Закрыть";
+              });
+            }
+          }
+          nextPart();
+        }, 800);
+
+      }, 1400);
+    }
+
+    function closeDiceModal() {
+      $("dice-modal").classList.add("hidden");
+    }
+
+    async function triggerReroll() {
+      closeDiceModal();
+      await doTurn(null, true);
+    }
+
+    /* Боевые действия */
+    async function combatAction(kind) {
+      try {
+        const data = await apiFetch("/api/combat/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: USER_ID, kind: kind })
+        });
+        STATE = data.state;
+        renderState();
+        if (data.log && data.log.length) {
+          $("narrative-content").innerHTML = `<div class="disco-voice">${data.log.join("<br>")}</div>` + $("narrative-content").innerHTML;
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    /* Магазин и DEV */
+    function openShop() { $("shop-modal").classList.remove("hidden"); }
+    function closeShop() { $("shop-modal").classList.add("hidden"); }
+
+    async function buyPack(packId) {
+      try {
+        const data = await apiFetch("/api/shop/invoice", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: USER_ID, pack_id: packId })
+        });
+        if (tg && tg.openInvoice) {
+          tg.openInvoice(data.invoice_link, status => { if (status === "paid") loadState(); });
+        } else {
+          window.open(data.invoice_link, "_blank");
+        }
+      } catch (err) { alert(err.message); }
+    }
+
+    function openDevModal() { $("dev-modal").classList.remove("hidden"); }
+    function closeDevModal() { $("dev-modal").classList.add("hidden"); }
+
+    async function callCheat(action, val = null) {
+      try {
+        STATE = await apiFetch("/api/dev/cheat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: USER_ID, action: action, value: val })
+        });
+        renderState();
+      } catch (err) { alert(err.message); }
+    }
+
+    function switchMobileTab(colId) {
+      ["col-story", "col-hero", "col-archive"].forEach(id => {
+        $(id).classList.toggle("hidden", id !== colId);
+      });
+      ["story", "hero", "archive"].forEach(k => {
+        $(`tab-btn-${k}`).classList.toggle("is-active", `col-${k}` === colId);
+      });
+    }
+
+    /* Конструктор Персонажа */
+    let PB = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+    let PB_SKILLS = new Set();
+    let PB_EXP = null;
+    let BRANCH_9 = "a";
+
+    function openBuilder() {
+      $("view-builder").classList.remove("hidden");
+      if (!META) return;
+      // Пути
+      $("b-pathway").innerHTML = META.pathways.map(p =>
+        `<option value="${p.key}">${strip(p.name)} (${strip(p.seq9_title)})</option>`
+      ).join("");
+      onBuilderPathwayChange();
+
+      // Предыстории
+      $("b-bg").innerHTML = META.backgrounds.map(b =>
+        `<option value="${b.key}">${strip(b.name)}</option>`
+      ).join("");
+      onBuilderBgChange();
+
+      // Регионы
+      $("b-region").innerHTML = META.regions.map(r =>
+        `<option value="${r.key}">${strip(r.name)}</option>`
+      ).join("");
+
+      pbRender();
+      skRender();
+    }
+    function closeBuilder() { $("view-builder").classList.add("hidden"); }
+
+    function onBuilderPathwayChange() {
+      const p = META.pathways.find(x => x.key === $("b-pathway").value);
+      if (!p) return;
+      $("b-pathway-preview").innerHTML = `Кость хитов: <b>d${p.bone}</b> | Статы: <b>${p.stat}</b><br>Заповедь: <i>${strip(p.principle)}</i>`;
+      $("b-branch-row").innerHTML = `
+        <button type="button" class="btn btn--sm ${BRANCH_9==='a'?'btn--primary':''}" onclick="setBranch('a')">[Ветка А] ${strip(p.choice_a.name)}</button>
+        <button type="button" class="btn btn--sm ${BRANCH_9==='b'?'btn--primary':''}" onclick="setBranch('b')">[Ветка Б] ${strip(p.choice_b.name)}</button>
+      `;
+    }
+    function setBranch(b) { BRANCH_9 = b; onBuilderPathwayChange(); }
+    function onBuilderBgChange() { skRender(); }
+
+    const COST_TABLE = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 6, 15: 8 };
+    function pbSpent() { return Object.values(PB).reduce((s, v) => s + (COST_TABLE[v] || 0), 0); }
+
+    function pbRender() {
+      const left = 27 - pbSpent();
+      $("pb-budget-label").textContent = `Осталось очков: ${left} / 27`;
+      const abNames = { str: "СИЛ", dex: "ЛОВ", con: "ТЕЛ", int: "ИНТ", wis: "МУД", cha: "ХАР" };
+      $("pb-grid").innerHTML = Object.keys(PB).map(k => `
+        <div class="pb-row">
+          <span>${abNames[k]} <b>${PB[k]}</b></span>
+          <div class="pb-ctrl">
+            <button class="pb-btn" onclick="stepStat('${k}', -1)">−</button>
+            <button class="pb-btn" onclick="stepStat('${k}', 1)">+</button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function stepStat(k, d) {
+      const cur = PB[k];
+      const next = cur + d;
+      if (next < 8 || next > 15) return;
+      const costDiff = (COST_TABLE[next] || 0) - (COST_TABLE[cur] || 0);
+      if (d > 0 && pbSpent() + costDiff > 27) return;
+      PB[k] = next;
+      pbRender();
+      skRender();
+    }
+
+    function skRender() {
+      const cat = META.skills_catalog || [];
+      const bg = META.backgrounds.find(x => x.key === $("b-bg").value) || {};
+      const free = bg.free_skill || "";
+      const intMod = Math.floor((PB.int - 10) / 2);
+      const budget = Math.max(3, 4 + intMod);
+      $("sk-budget-label").textContent = `Выбрано: ${PB_SKILLS.size} из ${budget}`;
+
+      $("sk-grid").innerHTML = cat.map(s => {
+        const isFree = s.key === free;
+        const isPicked = isFree || PB_SKILLS.has(s.key);
+        const isExp = PB_EXP === s.key;
+        return `<div class="sk-item ${isPicked ? 'is-picked' : ''} ${isExp ? 'is-exp' : ''}" onclick="toggleSkill('${s.key}')">
+          <span>${isExp ? '★ ' : ''}${strip(s.name)}</span>
+          <span class="eyebrow">${s.ability}</span>
+        </div>`;
+      }).join("");
+    }
+
+    function toggleSkill(k) {
+      const bg = META.backgrounds.find(x => x.key === $("b-bg").value) || {};
+      if (k === bg.free_skill) return;
+      if (PB_SKILLS.has(k)) {
+        if (PB_EXP === k) { PB_EXP = null; }
+        else if (!PB_EXP) { PB_EXP = k; }
+        else { PB_SKILLS.delete(k); }
+      } else {
+        const intMod = Math.floor((PB.int - 10) / 2);
+        if (PB_SKILLS.size < Math.max(3, 4 + intMod)) PB_SKILLS.add(k);
+      }
+      skRender();
+    }
+
+    async function submitBuilder() {
+      const payload = {
+        user_id: USER_ID,
+        name: $("b-name").value.trim() || "Клейн",
+        pathway: $("b-pathway").value,
+        background: $("b-bg").value,
+        region: $("b-region").value,
+        branch_9: BRANCH_9,
+        stats_pb: { ...PB },
+        skills: Array.from(PB_SKILLS),
+        expertise: PB_EXP,
+        bio: $("b-bio").value.trim()
+      };
+      try {
+        STATE = await apiFetch("/api/build_quick", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        renderState();
+      } catch (err) { alert(err.message); }
+    }
+
+    // Старт приложения
+    initApp();
+  </script>
+</body>
+</html>

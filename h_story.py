@@ -1142,8 +1142,9 @@ async def _apply_ai_memory_and_state(
         {"role": "user", "content": action_prompt},
         {"role": "assistant", "content": json.dumps(data, ensure_ascii=False)},
     ]
-    # Списание хода теперь атомарно через db.try_consume_turn() перед вызовом ИИ — здесь не списываем
-    new_turns = int(session.get("turns_left") or 0)
+    # Ход уже списан атомарно в db.try_consume_turn() ДО вызова ИИ. Здесь turns_left
+    # НЕ пишем: пока ИИ 85 секунд генерировал сцену, игрок мог купить пакет ходов,
+    # и запись устаревшего значения из session молча уничтожила бы покупку.
     new_arc = (data.get("current_arc") or session.get("current_arc") or _default_arc_for(c, session.get("lang", "ru"))).strip()
 
     session = await db.update_story_session(
@@ -1156,7 +1157,6 @@ async def _apply_ai_memory_and_state(
         history=history[-10:],
         options=data.get("options") or [],
         consequences=consequences,
-        turns_left=new_turns,
     )
     return c, session, dig_gain
 
@@ -1630,6 +1630,19 @@ async def _execute_narrative_turn(msg: Message, c: dict, session: dict, picked: 
     action_prompt = f"Player exact action: \"{picked.get('text', '')}\""
     data = await _call_ai_gm(c, session, action_prompt, roll_info, fate_seal_used=fate_seal_used)
     c, session, dig_gain = await _apply_ai_memory_and_state(uid, c, session, f"{action_prompt} [{roll_info}]", data, success)
+
+    # Реферальная награда пригласившему: начисляется только теперь — после того
+    # как новичок реально сделал первый ход (фейковые аккаунты ничего не приносят).
+    if await db.claim_referral_reward(uid):
+        try:
+            await msg.bot.send_message(
+                int(session.get("referred_by") or 0),
+                "🃏 <b>Твой приглашённый сделал первый шаг в тумане!</b>\n"
+                f"Начислено: <b>+{config.REFERRAL_INVITER_TURNS} Ходов Духовности ⚡</b> "
+                f"и <b>+{config.REFERRAL_INVITER_FATE} Печать Судьбы 🎲</b>.",
+            )
+        except Exception:
+            pass
 
     if not success:
         session = await db.update_story_session(uid, last_fail=picked)

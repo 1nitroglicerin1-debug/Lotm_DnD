@@ -1,0 +1,33 @@
+--- base
++++ server-hotfix
+@@ -136,16 +136,26 @@
+     # ---- Блок билда «Повелителя Тайн» ----
+     import lotm_data as lotm
+ 
++    if c.get("faction"):
++        fac = lotm.FACTIONS.get(c["faction"], {})
++        perk = fac.get("subtypes", [])
++        perk_name = ""
++        for p in perk:
++            if p["id"] == c.get("faction_perk"):
++                perk_name = p["name"]
++                break
++        lines.append("")
++        lines.append("<b>🩸 Билд</b>")
++        lines.append(f"Фракция: <b>{esc(fac.get('name', c['faction']))}</b>"
++                     + (f" · <i>{esc(perk_name)}</i>" if perk_name else ""))
+     if c.get("pathway"):
++        path = lotm.PATHWAYS.get(c["pathway"], {})
+         seq = c.get("sequence", 9)
+-        seq_title = lotm.SEQUENCE_TITLES.get(c["pathway"], {}).get(seq, f"Посл. {seq}")
+-        path = lotm.PATHWAYS.get(c["pathway"], {})
+         start = c.get("start_sequence", seq)
+         lines.append(
+             f"Путь: <b>{esc(path.get('name', c['pathway']))}</b> · "
+-            f"Посл. <b>{seq}</b> «<b>{esc(seq_title)}</b>» (старт {start}) · мастерство {fmt_mod(rules.sequence_prof_bonus(seq))}"
++            f"Посл. <b>{seq}</b> (старт {start}) · мастерство {fmt_mod(rules.sequence_prof_bonus(seq))}"
+         )
+-        lines.append(f"Рассудок: <b>{c.get('sanity', 100)}%</b> · Переваривание: <b>{c.get('digestion', 0)}%</b>")
+         choices = c.get("pathway_choices") or {}
+         lines.append(f"Открыто умений: {lotm.count_skills(seq)} · веток выбрано: {len(choices)}")
+     if c.get("feats"):

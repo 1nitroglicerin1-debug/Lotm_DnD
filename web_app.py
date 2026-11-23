@@ -7,7 +7,9 @@ import hmac
 import json
 import random
 import re
+import time
 from typing import Any
+from urllib.parse import unquote
 
 from aiogram import Bot
 from aiogram.types import LabeledPrice
@@ -31,11 +33,71 @@ _rng = random.SystemRandom()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=config.WEB_ORIGINS or ["*"],
+    allow_credentials=bool(config.WEB_ORIGINS),  # credentials с "*" браузер всё равно заблокирует
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# АУТЕНТИФИКАЦИЯ MINI APP
+# Раньше любой, кто знал/угадал чужой Telegram ID, мог играть от его имени,
+# тратить его Печати Судьбы и вызывать /api/dev/cheat. Теперь личность
+# подтверждается HMAC-подписью Telegram WebApp initData.
+# ---------------------------------------------------------------------------
+def _verify_init_data(init_data: str) -> int | None:
+    """Проверяет подпись Telegram.WebApp.initData и возвращает user_id (или None)."""
+    if not init_data or not config.BOT_TOKEN:
+        return None
+    try:
+        pairs = [chunk.split("=", 1) for chunk in init_data.split("&") if "=" in chunk]
+        data = {k: v for k, v in pairs}
+        received_hash = data.pop("hash", "")
+        if not received_hash:
+            return None
+        check_string = "\n".join(f"{k}={data[k]}" for k in sorted(data))
+        secret_key = hmac.new(b"WebAppData", config.BOT_TOKEN.encode(), hashlib.sha256).digest()
+        calc = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(calc, received_hash):
+            return None
+        # Срок жизни подписи — сутки (защита от переигрывания старого initData)
+        try:
+            auth_date = int(data.get("auth_date") or 0)
+        except ValueError:
+            return None
+        if auth_date and (time.time() - auth_date) > 86400:
+            return None
+        user = json.loads(unquote(data.get("user") or "{}"))
+        uid = int(user.get("id") or 0)
+        return uid or None
+    except Exception:
+        return None
+
+
+def _resolve_uid(user_id: int, request: Request | None) -> int:
+    """Сверяет заявленный user_id с подписью initData (если она передана).
+
+    • initData передан и валиден  -> играем строго под подтверждённым ID;
+    • initData передан и НЕвалиден -> 403 (попытка подмены);
+    • initData не передан         -> разрешаем только при ALLOW_ANON_WEB=1
+      (публичный сайт-витрина с локальными uid).
+    """
+    init_data = ""
+    if request is not None:
+        init_data = request.headers.get("x-telegram-init-data") or ""
+        if not init_data:
+            init_data = request.query_params.get("init_data") or ""
+    if init_data:
+        verified = _verify_init_data(init_data)
+        if verified is None:
+            raise HTTPException(403, "Недействительная подпись Telegram initData")
+        if int(user_id) != int(verified):
+            raise HTTPException(403, "user_id не совпадает с подписью Telegram")
+        return verified
+    if not config.ALLOW_ANON_WEB:
+        raise HTTPException(401, "Требуется авторизация через Telegram Mini App")
+    return int(user_id)
 
 import os
 os.makedirs("static", exist_ok=True)
@@ -139,8 +201,20 @@ async def api_meta():
     }
 
 
+def _daily_case_view(session: dict) -> dict:
+    """Состояние «Дела дня» для клиента: доступно ли, сколько даёт и текст крючка."""
+    today = int(time.strftime("%Y%m%d", time.gmtime()))
+    claimed = int(session.get("last_daily_case") or 0) >= today
+    return {
+        "done": claimed,
+        "turns": int(config.DAILY_CASE_TURNS),
+        "text": "Газета Тингена: на окраине найден труп без тени — за информацию платят медью, за молчание свинцом.",
+    }
+
+
 @app.get("/api/state/{user_id}")
-async def api_get_state(user_id: int) -> dict[str, Any]:
+async def api_get_state(user_id: int, request: Request = None) -> dict[str, Any]:
+    user_id = _resolve_uid(user_id, request)
     try:
         await db.upsert_login(user_id)
     except Exception:
@@ -148,7 +222,7 @@ async def api_get_state(user_id: int) -> dict[str, Any]:
     c = await db.get_character(user_id)
     session = await db.get_story_session(user_id)
     if not c or not c.get("pathway"):
-        return {"has_character": False, "session": session, "is_dev": config.is_dev(user_id)}
+        return {"has_character": False, "session": session, "daily": _daily_case_view(session), "is_dev": config.is_dev(user_id)}
 
     path = c["pathway"]
     if not c.get("inventory"):
@@ -197,6 +271,7 @@ async def api_get_state(user_id: int) -> dict[str, Any]:
 
     return {
         "has_character": True,
+        "daily": _daily_case_view(session),
         "character": {
             **c,
             "pathway_name": lotm.PATHWAYS.get(path, {}).get("name", path),
@@ -225,11 +300,11 @@ class DevCheatPayload(BaseModel):
 
 
 @app.post("/api/dev/cheat")
-async def api_dev_cheat(req: DevCheatPayload):
+async def api_dev_cheat(req: DevCheatPayload, request: Request = None):
     """Тестовая админ-панель разработчика. Отключается через DEV_MODE=0 в .env."""
     if not config.is_dev(req.user_id):
         raise HTTPException(403, "Dev mode disabled")
-    uid = req.user_id
+    uid = _resolve_uid(req.user_id, request)
     c = await db.get_character(uid)
     session = await db.get_story_session(uid)
 
@@ -319,9 +394,9 @@ async def api_dev_cheat(req: DevCheatPayload):
 
 
 @app.post("/api/character/equip_artifact")
-async def api_equip_artifact(req: DevCheatPayload):
+async def api_equip_artifact(req: DevCheatPayload, request: Request = None):
     """Включает/выключает экипировку Запечатанного Артефакта (максимум 2 активных одновременно)."""
-    uid = req.user_id
+    uid = _resolve_uid(req.user_id, request)
     c = await db.get_character(uid)
     if not c or not c.get("pathway"):
         raise HTTPException(404, "No character")
@@ -344,11 +419,11 @@ async def api_equip_artifact(req: DevCheatPayload):
 
 
 @app.post("/api/build_quick")
-async def api_quick_build(req: QuickBuildPayload):
+async def api_quick_build(req: QuickBuildPayload, request: Request = None):
     """Быстрое создание персонажа из веб-интерфейса (Mini App / Сайта)."""
     if req.pathway not in lotm.get_allowed_pathways():
         raise HTTPException(400, "Invalid pathway")
-    uid = req.user_id
+    uid = _resolve_uid(req.user_id, request)
     path = req.pathway
     seq = 9
     # Ручной Point-Buy (27 очков) либо сбалансированный пресет
@@ -491,9 +566,9 @@ def _resolve_picked(uid: int, c: dict, session: dict, req: "ActionPayload") -> t
 
 
 @app.post("/api/story/new_arc")
-async def api_story_new_arc(req: ActionPayload):
+async def api_story_new_arc(req: ActionPayload, request: Request = None):
     """Начать новую сюжетную арку: сбрасывает опции/угрозы, поднимает счётчик глав."""
-    uid = req.user_id
+    uid = _resolve_uid(req.user_id, request)
     c = await db.get_character(uid)
     session = await db.get_story_session(uid)
     if not c or not c.get("pathway"):
@@ -524,9 +599,9 @@ async def api_story_new_arc(req: ActionPayload):
 
 
 @app.post("/api/story/reroll")
-async def api_story_reroll(req: ActionPayload):
+async def api_story_reroll(req: ActionPayload, request: Request = None):
     """Мгновенный переброс проверки d20 через Печать Судьбы (< 10 мс) БЕЗ обращения к LLM."""
-    uid = req.user_id
+    uid = _resolve_uid(req.user_id, request)
     c = await db.get_character(uid)
     session = await db.get_story_session(uid)
     if not c or not c.get("pathway"):
@@ -590,11 +665,11 @@ async def api_story_reroll(req: ActionPayload):
 
 
 @app.post("/api/story/roll")
-async def api_story_roll(req: ActionPayload):
+async def api_story_roll(req: ActionPayload, request: Request = None):
     """Фаза 1 (за ~5 мс): мгновенный бросок d20 со всеми слагаемыми бонуса — ДО обращения к ИИ."""
     if req.reroll:
-        return await api_story_reroll(req)
-    uid = req.user_id
+        return await api_story_reroll(req, request)
+    uid = _resolve_uid(req.user_id, request)
     c = await db.get_character(uid)
     session = await db.get_story_session(uid)
     if not c or not c.get("pathway"):
@@ -632,7 +707,7 @@ async def _execute_turn(req: ActionPayload, uid: int) -> dict[str, Any]:
             status_code = int(data.get("status") or 502)
             if status_code < 400 or status_code >= 600:
                 status_code = 502
-            await db.update_story_session(uid, turns_left=int(session.get("turns_left") or 0))
+            await db.refund_turn(uid, config.is_dev(uid))
             raise HTTPException(status_code, f"Мастер временно недоступен ({err_msg})")
         data["narrative"] = _normalize_skill_paragraphs(data.get("narrative", ""))
         c, session, dig_gain = await h_story._apply_ai_memory_and_state(uid, c, session, prompt, data, True)
@@ -786,7 +861,7 @@ async def _execute_turn(req: ActionPayload, uid: int) -> dict[str, Any]:
         status_code = int(data.get("status") or 502)
         if status_code < 400 or status_code >= 600:
             status_code = 502
-        await db.update_story_session(uid, turns_left=int(session.get("turns_left") or 0))
+        await db.refund_turn(uid, config.is_dev(uid))
         raise HTTPException(status_code, f"Мастер временно недоступен ({err_msg})")
     data["narrative"] = _normalize_skill_paragraphs(data.get("narrative", ""))
     c, session, dig_gain = await h_story._apply_ai_memory_and_state(uid, c, session, f"{action_prompt} [{roll_info}]", data, success)
@@ -801,9 +876,9 @@ async def _execute_turn(req: ActionPayload, uid: int) -> dict[str, Any]:
 
 
 @app.post("/api/story/turn")
-async def api_story_turn(req: ActionPayload):
+async def api_story_turn(req: ActionPayload, request: Request = None):
     """Выполняет сюжетный ход с in-memory блокировкой от зависания и повторного списания при F5."""
-    uid = req.user_id
+    uid = _resolve_uid(req.user_id, request)
     existing_task = _ACTIVE_TURNS.get(uid)
     if existing_task and not existing_task.done():
         try:
@@ -822,9 +897,9 @@ async def api_story_turn(req: ActionPayload):
 
 
 @app.post("/api/combat/action")
-async def api_combat_action(req: CombatPayload):
+async def api_combat_action(req: CombatPayload, request: Request = None):
     """Пошаговый бой 1-на-1 на общем движке combat_engine — идентичен Telegram-боям."""
-    uid = req.user_id
+    uid = _resolve_uid(req.user_id, request)
     c = await db.get_character(uid)
     session = await db.get_story_session(uid)
     if not c:
@@ -873,11 +948,30 @@ async def api_combat_action(req: CombatPayload):
     return {"log": combat.render_plain(out), "victory": out.victory, "state": await api_get_state(uid)}
 
 
+@app.post("/api/story/daily")
+async def api_story_daily(req: ActionPayload, request: Request = None):
+    """«Дело дня»: бесплатный ход за вход в игру (раз в календарные сутки UTC)."""
+    uid = _resolve_uid(req.user_id, request)
+    granted, reason = await db.claim_daily_case(uid)
+    session = await db.get_story_session(uid)
+    return {
+        "daily": {
+            "done": not granted,
+            "turns": int(config.DAILY_CASE_TURNS),
+            "turns_left": int(session.get("turns_left") or 0),
+        },
+        "granted": granted,
+        "reason": reason,
+        "state": await api_get_state(uid),
+    }
+
+
 @app.post("/api/shop/invoice")
-async def api_create_invoice(req: InvoicePayload):
+async def api_create_invoice(req: InvoicePayload, request: Request = None):
     """Создаёт нативную ссылку на оплату в Telegram Stars (XTR) для вызова Telegram.WebApp.openInvoice."""
     if not _bot_instance:
         raise HTTPException(503, "Bot instance not attached")
+    uid = _resolve_uid(req.user_id, request)
     import h_shop
     packs = getattr(h_shop, "PACKS", {})
     pack_aliases = {"spark": "turns_40", "vessel": "artifact_box", "vip": "vip_30"}
@@ -887,7 +981,7 @@ async def api_create_invoice(req: InvoicePayload):
     link = await _bot_instance.create_invoice_link(
         title=pack.get("title_ru", "Пакет Духовности"),
         description=pack.get("desc_ru", "Пополнение ходов и Печатей Судьбы"),
-        payload=f"shop:{req.pack_id}:{req.user_id}",
+        payload=f"lotm:{pack_aliases.get(req.pack_id, req.pack_id)}:{uid}",
         provider_token="",
         currency="XTR",
         prices=[LabeledPrice(label=pack.get("title_ru", "Духовность"), amount=int(pack.get("stars", 50)))],
@@ -930,10 +1024,10 @@ async def api_lava_webhook(request: Request, payload: dict[str, Any]):
         if not await db.log_payment(uid, f"lava:{product_code}", 0, charge_id):
             return {"ok": True, "action": "duplicate_ignored"}
         if "plus" in product_code:
-            await db.activate_vip(uid, days=30, pool=config.VIP_PLUS_MONTHLY_POOL)
+            await db.activate_vip(uid, days=30, plan="plus")
             await db.add_fate_tokens(uid, 5)
         elif "vip" in product_code:
-            await db.activate_vip(uid, days=30, pool=config.VIP_MONTHLY_POOL)
+            await db.activate_vip(uid, days=30, plan="vip")
             await db.add_fate_tokens(uid, 3)
         else:
             await db.add_turns(uid, 120)

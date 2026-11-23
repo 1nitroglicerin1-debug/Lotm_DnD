@@ -697,15 +697,11 @@ body { background: radial-gradient(ellipse at 50% -10%, #19140b 0%, var(--ink) 6
 @media (min-width: 900px) {
   html, body { height: 100%; overflow: hidden; }
   .reg-vital { display: none !important; }
-  .main { height: calc(100dvh - var(--top-h)); overflow: hidden; align-items: start; padding-bottom: 16px; }
+  .main { height: calc(var(--tg-viewport-height, 100dvh) - var(--top-h)); overflow: hidden; align-items: start; padding-bottom: 16px; }
   .feed-col {
-    display: flex; flex-direction: column; height: 100%; min-height: 0; overflow-y: auto;
-    padding-bottom: 16px; padding-right: 8px;
-    scrollbar-width: thin; scrollbar-color: rgba(200,164,93,0.3) transparent;
+    display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden;
+    padding-right: 8px;
   }
-  .feed-col::-webkit-scrollbar { width: 6px; }
-  .feed-col::-webkit-scrollbar-track { background: transparent; }
-  .feed-col::-webkit-scrollbar-thumb { background: rgba(200,164,93,0.3); border-radius: 3px; }
   .dossier {
     position: static; height: fit-content; max-height: 100%; min-height: 0;
     overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(200,164,93,0.3) transparent;
@@ -716,20 +712,26 @@ body { background: radial-gradient(ellipse at 50% -10%, #19140b 0%, var(--ink) 6
   #reader {
     display: flex;
     flex-direction: column;
-    flex: 0 1 auto;
+    flex: 1 1 auto;
     min-height: 0;
-    overflow: visible;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
     padding-bottom: 14px;
     padding-right: 6px;
+    scrollbar-width: thin; scrollbar-color: rgba(200,164,93,0.3) transparent;
   }
-  .feed-actions { margin-top: 2px; }
+  #reader::-webkit-scrollbar { width: 6px; }
+  #reader::-webkit-scrollbar-track { background: transparent; }
+  #reader::-webkit-scrollbar-thumb { background: rgba(200,164,93,0.3); border-radius: 3px; }
+  .feed-actions { margin-top: auto; }
   #feed {
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
   .feed-actions {
-    flex-shrink: 0; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(200,164,93,0.16);
+    flex-shrink: 0; padding-top: 10px; border-top: 1px solid rgba(200,164,93,0.16);
     background: #0a0b0f; position: relative; z-index: 5; gap: 8px;
   }
   #composer { position: static; box-shadow: none; bottom: auto; margin-top: 6px; padding: 10px 12px; }
@@ -1133,7 +1135,7 @@ function renderTop() {
   setBar('#hero-b-hp', c.hp, c.max_hp);
   setBar('#hero-b-san', c.sanity, 100);
   setBar('#hero-b-dig', c.digestion, 100);
-  $('#r-turns').textContent = s.is_vip ? '∞' : (s.turns_left ?? '—');
+  $('#r-turns').textContent = (s.turns_left ?? '—');
   $('#r-fate').textContent = s.fate_tokens ?? 0;
   $('#dev-btn').classList.toggle('hidden', !STATE.data.is_dev);
   const ch = s.chapter;
@@ -1482,12 +1484,15 @@ async function openScene() {
   } finally {
     inkLoading(false);
     setBusy(false);
-    renderOptions();
+    // Скролл-контейнер повествования: на десктопе это #reader, на мобильном — окно.
+    // Новая сцена всегда появляется вверху ленты — показываем её плавно.
     const rd = $('#reader');
-    if (rd) rd.scrollTop = 0;
+    if (rd && rd.scrollHeight > rd.clientHeight) rd.scrollTo({ top: 0, behavior: 'smooth' });
+    else if (window.matchMedia && !window.matchMedia('(min-width: 900px)').matches) window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 }
 async function retryTurn() {
+  if (STATE.busy) return;
   if (STATE.busy) return;
   if (needsOpening() || !hasPlayedTurns()) {
     await openScene();
@@ -1512,7 +1517,7 @@ async function retryTurn() {
 async function makeMove({ option_id = null, free_text = null, intent = 'act', label = '' }) {
   if (STATE.busy) return;
   const s = SS();
-  if (!s.is_vip && Number(s.turns_left) <= 0) { toast('Ходы закончились. Загляните в Лавку.'); openShop(); return; }
+  if (Number(s.turns_left) <= 0) { toast('Ходы закончились. Загляните в Лавку или возьмите «Дело дня».'); openShop(); return; }
   setBusy(true); haptic('select');
   const prevNarr = s.last_narrative;
   let pre;
@@ -1598,7 +1603,9 @@ async function makeMove({ option_id = null, free_text = null, intent = 'act', la
       haptic('impact', 'light');
     }
   }
-  const rd = $('#reader'); if (rd) rd.scrollTop = 0;
+  const rd = $('#reader');
+  if (rd && rd.scrollHeight > rd.clientHeight) rd.scrollTo({ top: 0, behavior: 'smooth' });
+  else if (window.matchMedia && !window.matchMedia('(min-width: 900px)').matches) window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 /* ================= Бой и дело ================= */
@@ -1621,9 +1628,10 @@ async function combatAction(kind, stunt_text = null, seq = null, key = null) {
     setBusy(true);
     try {
       const r = await api('/api/story/daily', { user_id: USER_ID });
-      if (r.log && r.log.length) Journal.push({ t: 'combat', lines: r.log });
       applyState(r.state || r);
-      toast(r.daily && r.daily.done ? 'Дело дня уже закрыто' : 'Дело дня принято в работу (+1 ⚡)');
+      toast(r.granted
+        ? `Дело дня принято в работу (+${(r.daily && r.daily.turns) || 1} ⚡)`
+        : 'Дело дня уже закрыто — возвращайся завтра');
     } catch (e) { toast(e.message); }
     finally { setBusy(false); }
     return;

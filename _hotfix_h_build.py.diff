@@ -1,0 +1,1308 @@
+--- base
++++ server-hotfix
+@@ -1,12 +1,7 @@
+-"""Конструктор билда Потустороннего (Lord of the Mysteries).
+-
+-Шаги:
+-1. Имя персонажа
+-2. Выбор Пути (все 22 каноничных Пути)
+-3. Характеристики (Point-Buy 27 очков + Бонус Зелья Пути)
+-4. Навыки + Компетенция (звезда x2)
+-5. Специализация 9-й Последовательности (Ветка А / Б)
+-6. Предыстория / Квента (по желанию) -> мгновенная активация персонажа (approved).
++"""Конструктор билда «Повелителя Тайн»: анкета через FSM.
++
++Шаги: Имя → Фракция → подтип → Характеристики (Point-Buy) → Навыки → Путь → Последовательность → Специализации
++→ Стартовая Последовательность → выбор ветки (А/Б) → черты Потустороннего.
+ """
+ from __future__ import annotations
+ 
+@@ -26,6 +21,8 @@
+ import lotm_data as lotm
+ import rules
+ import ui
++import config
++from filters_admin import is_admin
+ from ui import btn, esc
+ 
+ router = Router()
+@@ -33,28 +30,56 @@
+ router.callback_query.filter(F.message.chat.type == "private")
+ 
+ STAT_ORDER = ("str", "dex", "con", "int", "wis", "cha")
+-START_SEQUENCE = 9
+ 
+ 
+ class Build(StatesGroup):
+     name = State()
+-    pathway = State()
++    faction = State()
++    subtype = State()
+     stats = State()
+     skills = State()
+-    expertise = State()
++    pathway = State()
++    start_seq = State()
+     choices = State()
+-    background = State()
+-    region = State()
++    feats = State()
+     bio = State()
+ 
++
++# ---------------------------------------------------------------------------
++# Вспомогательные функции
++# ---------------------------------------------------------------------------
+ 
+ def _fmt_skill(sk: dict) -> str:
+     cost = f", {sk['slot_cost']} яч. Р{sk['slot_rank']}" if sk.get("slot_cost") else ""
+     return f"{lotm.action_label(sk['action'])} — <b>{esc(sk['name'])}</b>{cost}\n<i>{esc(sk['desc'])}</i>"
+ 
+ 
+-# ---------------------------------------------------------------------------
+-# Точка входа: /build, /newchar, /reset_me
++START_SEQ_ALLOWED = (9, 8)   # обычные игроки
++CAPTAIN_START_SEQ = (6,)     # капитаны (config.CAPTAIN_IDS) — только 6-я
++
++
++def _allowed_seqs(user_id: int | None) -> tuple[int, ...]:
++    """Допустимые стартовые последовательности для конкретного игрока."""
++    if config.is_captain(user_id):
++        return CAPTAIN_START_SEQ
++    return START_SEQ_ALLOWED
++
++
++def _seq_kb(prefix: str, user_id: int | None = None) -> InlineKeyboardMarkup:
++    rows: list[list[InlineKeyboardButton]] = [
++        [btn(f"Посл. {s}", f"{prefix}:{s}")] for s in _allowed_seqs(user_id)
++    ]
++    rows.append([btn("« Назад", f"{prefix}:back")])
++    return InlineKeyboardMarkup(inline_keyboard=rows)
++
++
++def _pending_choices(start_seq: int, choices: dict) -> list[int]:
++    int_keys = {int(k) for k in choices.keys() if str(k).lstrip("-").isdigit()}
++    return [s for s in lotm.SEQUENCES if s >= start_seq and s not in int_keys]
++
++
++# ---------------------------------------------------------------------------
++# Точка входа: /build и /newchar
+ # ---------------------------------------------------------------------------
+ 
+ @router.message(Command("build", "newchar"))
+@@ -63,18 +88,22 @@
+         return
+     uid = message.from_user.id
+     char = await db.get_character(uid)
+-    if char is not None and char.get("pathway") and char.get("status") != "draft":
+-        seq = char.get("sequence", 9)
+-        p_name = lotm.PATHWAYS.get(char["pathway"], {}).get("name", char["pathway"])
+-        seq_title = lotm.SEQUENCE_TITLES.get(char["pathway"], {}).get(seq, f"Посл. {seq}")
+-        kb = InlineKeyboardMarkup(inline_keyboard=[
+-            [btn("Пересоздать персонажа с нуля", "bf:reset"), btn("Оставить текущего", "bf:reset_no")],
+-        ])
++    if char is not None and (char.get("faction") or char.get("pathway")) and char.get("status") != "draft":
++        if is_admin(uid):
++            kb = InlineKeyboardMarkup(inline_keyboard=[
++                [btn("🔄 Сбросить и создать заново", "bf:reset"), btn("❌ Отмена", "bf:reset_no")],
++            ])
++            await message.answer(
++                f"👑 Вы администратор. У вас уже есть персонаж: <b>{esc(char.get('name') or 'Без имени')}</b>. "
++                "Сбросить его для нового билда?",
++                reply_markup=kb,
++            )
++            return
+         await message.answer(
+-            f"У тебя уже есть активный Потусторонний: <b>{esc(char.get('name') or 'Без имени')}</b> "
+-            f"({esc(p_name)} — Посл. {seq} «{esc(seq_title)}»).\n\n"
+-            "Хочешь удалить его и начать путь заново с 9-й Последовательности?",
+-            reply_markup=kb,
++            f"⚠️ У вас уже есть активный персонаж: <b>{esc(char.get('name') or 'Без имени')}</b> "
++            f"({esc(lotm.FACTIONS.get(char.get('faction') or '', {}).get('name', char.get('faction') or '—'))}, "
++            f"Посл. {char.get('sequence') or '—'}).\n"
++            "Пересоздание запрещено. Для сброса обратитесь к Администратору."
+         )
+         return
+     await _start_build(message, state, user_id=uid)
+@@ -82,68 +111,38 @@
+ 
+ @router.message(Command("reset_me"))
+ async def cmd_reset_me(message: Message, state: FSMContext):
+-    if message.from_user is None:
++    """Сброс своего персонажа. Доступно только админам — для быстрых тестов."""
++    if message.from_user is None or not is_admin(message.from_user.id):
++        await message.answer("⛔ Команда доступна только администраторам.")
+         return
+     c = await db.get_character(message.from_user.id)
+     if c is None:
+-        await message.answer("У тебя пока нет персонажа. Создать: /build")
++        await message.answer("У вас нет персонажа для сброса.")
+         return
+     await state.clear()
+     await db.delete_character(message.from_user.id)
+     await message.answer(
+-        f"Персонаж <b>{esc(c.get('name') or 'Без имени')}</b> удалён. "
+-        "Начать новое восхождение: /build"
+-    )
+-
+-
+-@router.callback_query(F.data == "bf:reset")
+-async def cb_reset_confirmed(cb: CallbackQuery, state: FSMContext):
+-    if await db.is_in_combat(cb.from_user.id):
+-        await cb.answer("Нельзя пересоздать персонажа во время активного боя!", show_alert=True)
+-        return
+-    await db.delete_character(cb.from_user.id)
+-    await state.clear()
+-    await cb.answer("Старый персонаж удалён")
+-    if cb.message:
+-        await ui.safe_edit(cb.message, "Старый персонаж удалён. Начинаем создание нового…")
+-        await _start_build(cb.message, state, user_id=cb.from_user.id)
+-
+-
+-@router.callback_query(F.data == "bf:reset_no")
+-async def cb_reset_declined(cb: CallbackQuery):
+-    if cb.message:
+-        await ui.safe_edit(cb.message, "Хорошо, твой текущий персонаж сохранён. Посмотреть профиль: /me")
+-    await cb.answer()
+-
+-
+-@router.callback_query(F.data.in_({"bf:cancel", "bd:cancel"}))
+-async def cb_cancel(cb: CallbackQuery, state: FSMContext):
+-    await state.clear()
+-    if cb.message:
+-        await ui.safe_edit(cb.message, "Создание персонажа отменено. Запустить заново: /build")
+-    await cb.answer()
+-
+-
+-# ---------------------------------------------------------------------------
+-# Шаг 1/6 — Имя персонажа
+-# ---------------------------------------------------------------------------
++        f"🗑 Персонаж <b>{esc(c.get('name') or 'Без имени')}</b> удалён. "
++        "Создать нового: /build",
++    )
++
+ 
+ async def _start_build(message: Message, state: FSMContext, user_id: int | None = None) -> None:
++    """Шаг 1: запрашиваем имя персонажа."""
+     uid = user_id if user_id is not None else (message.from_user.id if message.from_user else 0)
+     default_pb = {s: 10 for s in STAT_ORDER}
+     await state.clear()
+     await state.set_state(Build.name)
+     await state.set_data({
+         "uid": uid,
+-        "start_seq": START_SEQUENCE,
+         "stats_pb": dict(default_pb),
+         "choices": {},
+         "feats": [],
+         "skills": [],
+     })
+     await message.answer(
+-        "Шаг 1/6 — Имя Потустороннего\n\n"
+-        "Введи имя своего персонажа (от 2 до 40 символов):"
++        "<b>Шаг 1/8 — Имя персонажа</b>\n\n"
++        "Введи имя персонажа (от 2 до 40 символов):",
+     )
+ 
+ 
+@@ -154,7 +153,17 @@
+         await message.answer("Имя должно быть от 2 до 40 символов. Попробуй ещё раз:")
+         return
+     await state.update_data(name=name, uid=message.from_user.id)
+-    await _ask_pathway_msg(message, state)
++    await state.set_state(Build.faction)
++    rows: list[list[InlineKeyboardButton]] = [
++        [btn(f["name"], f"bf:f:{key}")] for key, f in lotm.FACTIONS.items()
++    ]
++    rows.append([btn("« Отмена", "bf:cancel")])
++    await message.answer(
++        f"Имя: <b>{esc(name)}</b>\n\n"
++        "<b>Шаг 2/8 — Фракция (Происхождение)</b>\n\n"
++        "Выбери фракцию своего персонажа:",
++        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
++    )
+ 
+ 
+ @router.message(Build.name)
+@@ -162,61 +171,303 @@
+     await message.answer("Пришли имя обычным текстом (2–40 символов) или /cancel:")
+ 
+ 
+-# ---------------------------------------------------------------------------
+-# Шаг 2/6 — Выбор одного из 22 Путей (старт строго на Посл. 9)
+-# ---------------------------------------------------------------------------
+-
+-def _pathway_kb() -> InlineKeyboardMarkup:
+-    allowed = lotm.get_allowed_pathways()
++@router.callback_query(F.data == "bf:reset")
++async def cb_reset_confirmed(cb: CallbackQuery, state: FSMContext):
++    """Админ подтвердил сброс: удаляем персонажа по cb.from_user.id и открываем Шаг 1."""
++    if not is_admin(cb.from_user.id):
++        await cb.answer("Только для администраторов", show_alert=True)
++        return
++    await db.delete_character(cb.from_user.id)
++    await state.clear()
++    await cb.answer("Персонаж удалён")
++    if cb.message:
++        await ui.safe_edit(cb.message, "🗑 Персонаж удалён. Создаём нового…")
++        await _start_build(cb.message, state, user_id=cb.from_user.id)
++
++
++@router.callback_query(F.data == "bf:reset_no")
++async def cb_reset_declined(cb: CallbackQuery):
++    if cb.message:
++        await ui.safe_edit(cb.message, "Хорошо, персонаж остаётся как есть. /build позже.")
++    await cb.answer()
++
++
++# ---------------------------------------------------------------------------
++# Шаг 2 — Фракция и подтип
++# ---------------------------------------------------------------------------
++
++@router.callback_query(F.data.in_({"bf:cancel", "bd:cancel"}))
++async def cb_cancel(cb: CallbackQuery, state: FSMContext):
++    await state.clear()
++    if cb.message:
++        await ui.safe_edit(cb.message, "Конструктор билда отменён.")
++    await cb.answer()
++
++
++@router.callback_query(F.data.startswith("bf:f:"))
++async def cb_faction(cb: CallbackQuery, state: FSMContext):
++    parts = cb.data.split(":")
++    if len(parts) < 3:
++        await cb.answer()
++        return
++    key = parts[2]
++    if key not in lotm.FACTIONS:
++        await cb.answer("Неизвестная фракция", show_alert=True)
++        return
++    await state.update_data(faction=key)
++    await _ask_subtype(cb, state)
++
++
++def _ask_subtype_text(fac: dict) -> str:
++    lines = [
++        f"<b>Фракция: {esc(fac['name'])}</b>\n",
++        "<b>Бонус характеристик:</b> "
++        + ", ".join(f"+ {v} {rules.SHORT_ABILITY.get(k, k)}" for k, v in fac.get("stat_bonus", {}).items()) + "\n",
++        "<b>Доступные пути:</b> " + ", ".join(lotm.PATHWAYS[p]["name"] for p in fac.get("paths", [])) + "\n",
++        "<b>Шаг 2.1/8 — Особенность происхождения</b>\nВыбери фракционную особенность:",
++    ]
++    for s in fac.get("subtypes", []):
++        emoji = s.get("emoji", "")
++        icon = f"{emoji} " if emoji else ""
++        lines.append(f"\n{icon}<b>{esc(s['name'])}</b>\n<i>{esc(s['desc'])}</i>")
++    return "\n".join(lines)
++
++
++def _subtype_kb(fac: dict) -> InlineKeyboardMarkup:
+     rows: list[list[InlineKeyboardButton]] = []
+-    for i in range(0, len(allowed), 2):
+-        row = []
+-        for p in allowed[i:i + 2]:
+-            seq9_title = lotm.SEQUENCE_TITLES.get(p, {}).get(9, "")
+-            label = f"{lotm.PATHWAYS[p]['name']} ({seq9_title})" if seq9_title else lotm.PATHWAYS[p]["name"]
+-            row.append(btn(label, f"bw:{p}"))
+-        rows.append(row)
++    for s in fac.get("subtypes", []):
++        emoji = s.get("emoji", "")
++        icon = f"{emoji} " if emoji else ""
++        rows.append([btn(f"[ {icon}{s['name']} ]", f"bp:{s['id']}")])
++    rows.append([btn("« Назад", "bf:back")])
++    return InlineKeyboardMarkup(inline_keyboard=rows)
++
++
++async def _ask_subtype(cb: CallbackQuery, state: FSMContext):
++    data = await state.get_data()
++    fac = lotm.FACTIONS.get(data.get("faction", ""))
++    if not fac:
++        await cb.answer("Сессия конструктора истекла. Запусти /build заново.", show_alert=True)
++        return
++    await state.set_state(Build.subtype)
++    await ui.safe_edit(cb.message, _ask_subtype_text(fac), _subtype_kb(fac))
++    await cb.answer()
++
++
++@router.callback_query(F.data == "bf:back")
++async def cb_faction_back(cb: CallbackQuery, state: FSMContext):
++    await state.set_state(Build.faction)
++    rows: list[list[InlineKeyboardButton]] = [
++        [btn(f["name"], f"bf:f:{key}")] for key, f in lotm.FACTIONS.items()
++    ]
+     rows.append([btn("« Отмена", "bf:cancel")])
+-    return InlineKeyboardMarkup(inline_keyboard=rows)
+-
+-
+-def _pathway_prompt_text(name: str) -> str:
+-    return (
+-        f"Имя: <b>{esc(name)}</b>\n\n"
+-        "Шаг 2/6 — Выбор Пути Потустороннего\n\n"
+-        "Каждый Потусторонний начинает восхождение с <b>9-й Последовательности</b>.\n"
+-        "Выбери один из 22 каноничных Путей:"
+-    )
+-
+-
+-async def _ask_pathway_msg(message: Message, state: FSMContext):
+-    data = await state.get_data()
++    await ui.safe_edit(
++        cb.message,
++        "<b>Шаг 2/8 — Фракция (Происхождение)</b>\n\nВыбери фракцию своего персонажа:",
++        InlineKeyboardMarkup(inline_keyboard=rows),
++    )
++    await cb.answer()
++
++
++@router.callback_query(F.data == "bp:back")
++async def cb_subtype_back(cb: CallbackQuery, state: FSMContext):
++    await _ask_subtype(cb, state)
++
++
++@router.callback_query(F.data.startswith("bp:"))
++async def cb_subtype(cb: CallbackQuery, state: FSMContext):
++    parts = cb.data.split(":", 1)
++    if len(parts) < 2:
++        await cb.answer()
++        return
++    key = parts[1]
++    data = await state.get_data()
++    fac = lotm.FACTIONS.get(data.get("faction", ""), {})
++    sub = next((s for s in fac.get("subtypes", []) if s["id"] == key), None)
++    if sub is None:
++        await cb.answer("Неизвестный подтип", show_alert=True)
++        return
++    await state.update_data(subtype=key)
++    await _ask_pathway(cb, state)
++
++
++# ---------------------------------------------------------------------------
++# Шаг 3 — Путь (сразу после фракции)
++# ---------------------------------------------------------------------------
++
++async def _ask_pathway(cb: CallbackQuery, state: FSMContext):
++    data = await state.get_data()
++    allowed = lotm.get_allowed_pathways(data.get("faction", ""))
++    rows: list[list[InlineKeyboardButton]] = [
++        [btn(lotm.PATHWAYS[p]["name"], f"bw:{p}") for p in allowed[i:i + 2]]
++        for i in range(0, len(allowed), 2)
++    ]
++    rows.append([btn("« Назад к фракционной пассивке", "bp:back")])
+     await state.set_state(Build.pathway)
+-    await message.answer(_pathway_prompt_text(data.get("name", "")), reply_markup=_pathway_kb())
+-
+-
+-async def _ask_pathway(cb: CallbackQuery, state: FSMContext):
+-    data = await state.get_data()
+-    await state.set_state(Build.pathway)
+-    await ui.safe_edit(cb.message, _pathway_prompt_text(data.get("name", "")), _pathway_kb())
+-    await cb.answer()
+-
++    await ui.safe_edit(
++        cb.message,
++        "<b>Шаг 3/8 — Путь</b>\nВыбери доступный для твоей фракции путь (2 столбца):",
++        InlineKeyboardMarkup(inline_keyboard=rows),
++    )
++    await cb.answer()
++
++
++# ---------------------------------------------------------------------------
++# Шаг 4 — Стартовая последовательность
++# ---------------------------------------------------------------------------
+ 
+ @router.callback_query(F.data.startswith("bw:"))
+ async def cb_pathway(cb: CallbackQuery, state: FSMContext):
+-    key = cb.data.split(":", 1)[1]
+-    if key not in lotm.get_allowed_pathways():
+-        await cb.answer("Неизвестный путь", show_alert=True)
+-        return
+-    await state.update_data(pathway=key, start_seq=START_SEQUENCE, choices={}, feats=[], skills=[])
++    parts = cb.data.split(":", 1)
++    if len(parts) < 2:
++        await cb.answer()
++        return
++    key = parts[1]
++    data = await state.get_data()
++    faction = data.get("faction", "")
++    if key not in lotm.get_allowed_pathways(faction):
++        if faction in ("elder_vampire", "young_vampire"):
++            if key in ("red_priest", "death"):
++                await cb.answer("Вампирам и сангвинам запрещено выбирать этот путь!", show_alert=True)
++            elif key == "sun":
++                await cb.answer("Свет и очищение несовместимы с природой нежити: вампирам запрещён Путь Солнца!", show_alert=True)
++            else:
++                await cb.answer("Свет зари и сумеречное увядание нежити: вампирам запрещён Путь Сумеречного Гиганта!", show_alert=True)
++        elif faction == "hunter" and key == "moon":
++            await cb.answer("Охотники Коалиции не могут ступить на Путь Луны!", show_alert=True)
++        else:
++            await cb.answer("Этот путь недоступен твоей фракции", show_alert=True)
++        return
++    await state.update_data(pathway=key, start_seq=None, choices={}, feats=[])
++    await _ask_start_seq(cb, state)
++
++
++async def _ask_start_seq(cb: CallbackQuery, state: FSMContext):
++    data = await state.get_data()
++    p = lotm.PATHWAYS.get(data.get("pathway", ""))
++    if not p:
++        await cb.answer("Сессия конструктора истекла. Запусти /build заново.", show_alert=True)
++        return
++    await state.set_state(Build.start_seq)
++    is_cap = config.is_captain(cb.from_user.id)
++    hint = (
++        "Ты капитан: на старте тебе доступна только 6-я последовательность:"
++        if is_cap
++        else "Выбери стартовую последовательность (на старте доступны только 8 и 9):"
++    )
++    await ui.safe_edit(
++        cb.message,
++        f"<b>{esc(p['name'])}</b> — кость духовности d{p['bone']}, ключевые характеристики: {esc(p['stat'])}\n\n"
++        "<b>Шаг 4/8 — Стартовая Последовательность</b>\n" + hint,
++        _seq_kb("bs", cb.from_user.id),
++    )
++    await cb.answer()
++
++
++@router.callback_query(F.data.startswith("bs:"))
++async def cb_start_seq(cb: CallbackQuery, state: FSMContext):
++    parts = cb.data.split(":", 1)
++    if len(parts) < 2:
++        await cb.answer()
++        return
++    arg = parts[1]
++    if arg == "back":
++        await _ask_pathway(cb, state)
++        return
++
++    try:
++        seq = int(arg)
++    except ValueError:
++        await cb.answer("Недопустимая стартовая последовательность", show_alert=True)
++        return
++
++    if seq not in _allowed_seqs(cb.from_user.id):
++        hint = (
++            "Капитанам доступна только 6-я последовательность"
++            if config.is_captain(cb.from_user.id)
++            else "Недопустимая стартовая последовательность"
++        )
++        await cb.answer(hint, show_alert=True)
++        return
++    await state.update_data(start_seq=seq, choices={}, feats=[])
+     await _ask_stats(cb, state)
+ 
+-
+-# ---------------------------------------------------------------------------
+-# Шаг 3/6 — Характеристики (Point-Buy 27 очков + Бонус Зелья Пути)
++# ---------------------------------------------------------------------------
++# Шаг 6 — Владение навыками
++# ---------------------------------------------------------------------------
++
++def _skills_kb(picked: list[str]) -> InlineKeyboardMarkup:
++    items: list[InlineKeyboardButton] = []
++    for k, (name, ab, _) in rules.SKILLS.items():
++        mark = "✅ " if k in picked else "▫️ "
++        items.append(btn(f"{mark}{name} ({rules.SHORT_ABILITY[ab]})", f"bsk:toggle:{k}"))
++    rows = [items[i:i + 2] for i in range(0, len(items), 2)]
++    if len(picked) == SKILL_PICK_COUNT:
++        rows.append([btn(f"✅ Подтвердить навыки ({len(picked)}/{SKILL_PICK_COUNT})", "bsk:done")])
++    else:
++        rows.append([btn(f"Выбери ещё {SKILL_PICK_COUNT - len(picked)} (выбрано {len(picked)}/{SKILL_PICK_COUNT})", "noop")])
++    rows.append([btn("« Назад к характеристикам", "bsk:back")])
++    return InlineKeyboardMarkup(inline_keyboard=rows)
++
++
++async def _ask_skills(cb: CallbackQuery, state: FSMContext):
++    data = await state.get_data()
++    picked = list(data.get("skills") or [])
++    await state.set_state(Build.skills)
++    await ui.safe_edit(
++        cb.message,
++        f"<b>Шаг 6/8 — Владение навыками</b>\n\n"
++        f"Выбери <b>{SKILL_PICK_COUNT} навыка</b>, к проверкам которых будет прибавляться твой бонус мастерства:",
++        _skills_kb(picked),
++    )
++    await cb.answer()
++
++
++@router.callback_query(F.data.startswith("bsk:"))
++async def cb_skills(cb: CallbackQuery, state: FSMContext):
++    parts = cb.data.split(":")
++    action = parts[1] if len(parts) > 1 else ""
++    arg = parts[2] if len(parts) > 2 else ""
++    data = await state.get_data()
++    if "faction" not in data:
++        await cb.answer("Сессия конструктора истекла. Запусти /build заново.", show_alert=True)
++        return
++    picked = list(data.get("skills") or [])
++
++    if action == "done":
++        if len(picked) != SKILL_PICK_COUNT:
++            await cb.answer(f"Выбери ровно {SKILL_PICK_COUNT} навыка!", show_alert=True)
++            return
++        await state.update_data(skills=picked)
++        await _ask_choice(cb, state)
++        return
++
++    if action == "back":
++        await _ask_stats(cb, state)
++        return
++
++    if action == "toggle" and arg in rules.SKILLS:
++        if arg in picked:
++            picked.remove(arg)
++        else:
++            if len(picked) >= SKILL_PICK_COUNT:
++                await cb.answer(f"Максимум {SKILL_PICK_COUNT} навыка! Сначала сними галочку с другого.", show_alert=True)
++                return
++            picked.append(arg)
++        await state.update_data(skills=picked)
++        try:
++            await cb.message.edit_reply_markup(reply_markup=_skills_kb(picked))
++        except Exception:
++            pass
++        await cb.answer()
++
++
++# ---------------------------------------------------------------------------
++# Шаг 5 — Характеристики (Point-Buy на инлайн-кнопках)
+ # ---------------------------------------------------------------------------
+ 
+ def _stat_cost(score: int) -> int:
++    """Стоимость значения в системе Point-Buy (8–15)."""
+     return rules.STAT_COST.get(int(score), 99)
+ 
+ 
+@@ -224,84 +475,82 @@
+     return sum(_stat_cost(v) for v in stats.values())
+ 
+ 
+-def _stats_kb(stats: dict, bonus_map: dict[str, int]) -> InlineKeyboardMarkup:
++def _stats_kb(stats: dict) -> InlineKeyboardMarkup:
+     rows: list[list[InlineKeyboardButton]] = []
+     for s in STAT_ORDER:
+-        b = bonus_map.get(s, 0)
+-        b_str = f" (+{b} зелье = {stats[s] + b})" if b else ""
+         rows.append([
+-            btn(f"{rules.SHORT_ABILITY[s]}: {stats[s]}{b_str}", "noop"),
++            btn(f"{rules.SHORT_ABILITY[s]}: {stats[s]}", "noop"),
+             btn("−", f"bstat:-:{s}"),
+             btn("+", f"bstat:+:{s}"),
+         ])
+     left = rules.POINT_BUY_BUDGET - _stats_spent(stats)
+     rows.append([btn(f"Осталось очков: {left}", "noop")])
+     if left != 0:
+-        rows.append([btn(f"Распредели все {rules.POINT_BUY_BUDGET} очков", "noop")])
++        rows.append([btn("⚠️ Распредели все 27 очков", "noop")])
+     else:
+-        rows.append([btn("Подтвердить характеристики", "bstat:done")])
+-    rows.append([btn("« Назад к выбору Пути", "bstat:back")])
++        rows.append([btn("✅ Подтвердить характеристики", "bstat:done")])
++    rows.append([btn("« Назад к стартовой последовательности", "bstat:back")])
+     return InlineKeyboardMarkup(inline_keyboard=rows)
+ 
+ 
+ async def _ask_stats(cb: CallbackQuery, state: FSMContext):
+     data = await state.get_data()
+-    path = data.get("pathway", "")
+-    p = lotm.PATHWAYS.get(path)
+-    if not p:
+-        await cb.answer("Сессия конструктора истекла. Запусти /build заново.", show_alert=True)
+-        return
+     raw_pb = data.get("stats_pb")
+     if isinstance(raw_pb, dict) and all(k in raw_pb for k in STAT_ORDER):
+         stats = {s: int(raw_pb[s]) for s in STAT_ORDER}
+     else:
+         stats = {s: 10 for s in STAT_ORDER}
+-    bonus_map = lotm.pathway_stat_bonus(path)
+-    bonus_desc = ", ".join(f"+{v} {rules.SHORT_ABILITY[k]}" for k, v in bonus_map.items())
+-    seq9_title = lotm.SEQUENCE_TITLES.get(path, {}).get(9, "Посл. 9")
+     await state.update_data(stats_pb=stats)
+     await state.set_state(Build.stats)
+     await ui.safe_edit(
+         cb.message,
+-        f"Путь: <b>{esc(p['name'])}</b> — Посл. 9 «<b>{esc(seq9_title)}</b>»\n"
+-        f"Кость хитов: d{p['bone']} | Ключевые параметры: {esc(p['stat'])}\n"
+-        f"Бонус зелья Пути: {bonus_desc}\n\n"
+-        "<b>Шаг 3/6 — Характеристики (Point-Buy)</b>\n"
+-        f"Распредели <b>{rules.POINT_BUY_BUDGET} очков</b> (значения от {rules.POINT_BUY_MIN} до {rules.POINT_BUY_MAX}).\n"
+-        "Стоимость: 8=0, 9=1, 10=2, 11=3, 12=4, 13=5, 14=6, 15=8.\n"
+-        "<i>Бонус зелья прибавится к твоим характеристикам автоматически.</i>",
+-        _stats_kb(stats, bonus_map),
+-    )
+-    await cb.answer()
+-
++        "<b>Шаг 5/8 — Характеристики (Point-Buy)</b>\n\n"
++        "Все характеристики начинаются с 10. Распредели <b>27 очков</b>.\n"
++        "Стоимость: 8=0, 9=1, 10=2, 11=3, 12=4, 13=5, 14=6, 15=8 (максимум 15).\n\n"
++        "<i>Бонусы твоей фракции будут добавлены к итоговым значениям автоматически один раз при завершении билда.</i>",
++        _stats_kb(stats),
++    )
++    await cb.answer()
++
++
++SKILL_PICK_COUNT = 3
+ 
+ @router.callback_query(F.data.startswith("bstat:"))
++
+ async def cb_stats(cb: CallbackQuery, state: FSMContext):
+     parts = cb.data.split(":")
+     action = parts[1] if len(parts) > 1 else ""
+     arg = parts[2] if len(parts) > 2 else ""
+     data = await state.get_data()
+-    path = data.get("pathway", "")
+-    if not path:
++
++    if "faction" not in data:
+         await cb.answer("Сессия конструктора истекла. Запусти /build заново.", show_alert=True)
+         return
+ 
+     raw_pb = data.get("stats_pb")
+-    stats = {s: int(raw_pb[s]) for s in STAT_ORDER} if isinstance(raw_pb, dict) and all(k in raw_pb for k in STAT_ORDER) else {s: 10 for s in STAT_ORDER}
+-    bonus_map = lotm.pathway_stat_bonus(path)
++    if isinstance(raw_pb, dict) and all(k in raw_pb for k in STAT_ORDER):
++        stats = {s: int(raw_pb[s]) for s in STAT_ORDER}
++    else:
++        stats = {s: 10 for s in STAT_ORDER}
+ 
+     if action == "done":
+         spent = rules.stat_pool_spent(stats)
+         if spent != rules.POINT_BUY_BUDGET:
+             left = rules.POINT_BUY_BUDGET - spent
+-            await cb.answer(f"Используй ровно {rules.POINT_BUY_BUDGET} очков (осталось: {left}).", show_alert=True)
++            await cb.answer(
++                f"Используй ровно {rules.POINT_BUY_BUDGET} очков Point-Buy (осталось: {left}).",
++                show_alert=True,
++            )
++            return
++        if any(not (rules.POINT_BUY_MIN <= v <= rules.POINT_BUY_MAX) for v in stats.values()):
++            await cb.answer("Все характеристики должны быть в пределах от 8 до 15.", show_alert=True)
+             return
+         await state.update_data(stats=dict(stats), stats_pb=dict(stats))
+         await _ask_skills(cb, state)
+         return
+ 
+     if action == "back":
+-        await _ask_pathway(cb, state)
++        await _ask_start_seq(cb, state)
+         return
+ 
+     if arg not in stats:
+@@ -310,7 +559,7 @@
+ 
+     if action == "+":
+         if stats[arg] >= rules.POINT_BUY_MAX:
+-            await cb.answer("Максимум до бонуса зелья — 15")
++            await cb.answer("Максимум для характеристики — 15")
+             return
+         cost_diff = _stat_cost(stats[arg] + 1) - _stat_cost(stats[arg])
+         if _stats_spent(stats) + cost_diff > rules.POINT_BUY_BUDGET:
+@@ -319,7 +568,7 @@
+         stats[arg] += 1
+     elif action == "-":
+         if stats[arg] <= rules.POINT_BUY_MIN:
+-            await cb.answer("Минимум — 8")
++            await cb.answer("Минимум для характеристики — 8")
+             return
+         stats[arg] -= 1
+     else:
+@@ -328,153 +577,43 @@
+ 
+     await state.update_data(stats_pb=stats)
+     try:
+-        await cb.message.edit_reply_markup(reply_markup=_stats_kb(stats, bonus_map))
++        await cb.message.edit_reply_markup(reply_markup=_stats_kb(stats))
+     except Exception:
+         pass
+     await cb.answer()
+ 
+ 
+ # ---------------------------------------------------------------------------
+-# Шаг 4/6 — Навыки и Компетенция (x2)
+-# ---------------------------------------------------------------------------
+-
+-def _effective_stats_preview(data: dict) -> dict[str, int]:
+-    base = data.get("stats") or data.get("stats_pb") or dict(rules.POINTBUY_DEFAULT)
+-    stats = {k: int(base.get(k, 10)) for k in rules.ABILITIES}
+-    for stat, bonus in lotm.pathway_stat_bonus(data.get("pathway", "")).items():
+-        stats[stat] = min(30, stats.get(stat, 10) + int(bonus))
+-    return stats
+-
+-
+-def _skill_budget(data: dict) -> int:
+-    return rules.skill_pick_budget(data.get("pathway", ""), _effective_stats_preview(data))
+-
+-
+-def _skills_kb(picked: list[str], budget: int) -> InlineKeyboardMarkup:
+-    items: list[InlineKeyboardButton] = []
+-    for k, (name, ab, _) in rules.SKILLS.items():
+-        mark = "OK " if k in picked else "· "
+-        items.append(btn(f"{mark}{name} ({rules.SHORT_ABILITY[ab]})", f"bsk:toggle:{k}"))
+-    rows = [items[i:i + 2] for i in range(0, len(items), 2)]
+-    if len(picked) >= budget:
+-        rows.append([btn(f"Подтвердить навыки ({len(picked)}/{budget})", "bsk:done")])
+-    else:
+-        rows.append([btn(f"Выбери ещё {budget - len(picked)} (выбрано {len(picked)}/{budget})", "noop")])
+-    rows.append([btn("« Назад к характеристикам", "bsk:back")])
+-    return InlineKeyboardMarkup(inline_keyboard=rows)
+-
+-
+-async def _ask_skills(cb: CallbackQuery, state: FSMContext):
+-    data = await state.get_data()
+-    budget = _skill_budget(data)
+-    picked = [k for k in (data.get("skills") or []) if k in rules.SKILLS][:budget]
+-    await state.update_data(skills=picked)
+-    await state.set_state(Build.skills)
+-    await ui.safe_edit(
+-        cb.message,
+-        "<b>Шаг 4/6 — Владение навыками</b>\n\n"
+-        f"Выбери <b>{budget} навыка</b> (зависит от твоего Пути и Интеллекта), в которых ты обучен:",
+-        _skills_kb(picked, budget),
+-    )
+-    await cb.answer()
+-
+-
+-@router.callback_query(F.data.startswith("bsk:"))
+-async def cb_skills(cb: CallbackQuery, state: FSMContext):
+-    parts = cb.data.split(":")
+-    action = parts[1] if len(parts) > 1 else ""
+-    arg = parts[2] if len(parts) > 2 else ""
+-    data = await state.get_data()
+-    if not data.get("pathway"):
++# Шаг 7 — Выбор ветки А/Б и черт Потустороннего
++# ---------------------------------------------------------------------------
++
++async def _ask_choice(cb: CallbackQuery, state: FSMContext):
++    data = await state.get_data()
++    if "pathway" not in data or not data.get("start_seq"):
+         await cb.answer("Сессия конструктора истекла. Запусти /build заново.", show_alert=True)
+         return
+-    budget = _skill_budget(data)
+-    picked = list(data.get("skills") or [])
+-
+-    if action == "done":
+-        if len(picked) != budget:
+-            await cb.answer(f"Выбери ровно {budget} навыка!", show_alert=True)
+-            return
+-        await _ask_expertise(cb, state)
+-        return
+-
+-    if action == "back":
+-        await _ask_stats(cb, state)
+-        return
+-
+-    if action == "toggle" and arg in rules.SKILLS:
+-        if arg in picked:
+-            picked.remove(arg)
+-        else:
+-            if len(picked) >= budget:
+-                await cb.answer(f"Максимум {budget} навыка! Сначала сними галочку с другого.", show_alert=True)
+-                return
+-            picked.append(arg)
+-        await state.update_data(skills=picked)
+-        try:
+-            await cb.message.edit_reply_markup(reply_markup=_skills_kb(picked, budget))
+-        except Exception:
+-            pass
+-        await cb.answer()
+-
+-
+-async def _ask_expertise(cb: CallbackQuery, state: FSMContext):
+-    data = await state.get_data()
+-    skills = list(data.get("skills") or [])
+-    await state.set_state(Build.expertise)
+-    rows = [
+-        [btn(f"★ {rules.SKILLS[k][0]} (Мастерство x2)", f"bexp:{k}")]
+-        for k in skills if k in rules.SKILLS
+-    ]
+-    rows.append([btn("« Назад к навыкам", "bexp:back")])
+-    await ui.safe_edit(
+-        cb.message,
+-        "<b>Шаг 4.1/6 — Компетенция (Expertise)</b>\n\n"
+-        "Выбери <b>1 профильный навык</b>, в котором твой бонус мастерства будет удвоен (x2):",
+-        InlineKeyboardMarkup(inline_keyboard=rows),
+-    )
+-    await cb.answer()
+-
+-
+-@router.callback_query(F.data.startswith("bexp:"))
+-async def cb_expertise(cb: CallbackQuery, state: FSMContext):
+-    key = cb.data.split(":", 1)[1]
+-    if key == "back":
+-        await _ask_skills(cb, state)
+-        return
+-    await state.update_data(expertise=key)
+-    await _ask_choice(cb, state)
+-
+-
+-# ---------------------------------------------------------------------------
+-# Шаг 5/6 — Выбор специализации 9-й Последовательности (Ветка А / Б)
+-# ---------------------------------------------------------------------------
+-
+-async def _ask_choice(cb: CallbackQuery, state: FSMContext):
+-    data = await state.get_data()
+-    path = data.get("pathway")
+-    if not path:
+-        await cb.answer("Сессия конструктора истекла. Запусти /build заново.", show_alert=True)
+-        return
+-    seq = START_SEQUENCE
+-    tiers = lotm.PATHWAYS[path]["tiers"][seq]
+-    core = tiers["core"]
++    start_seq = int(data.get("start_seq", 9))
++    choices = data.get("choices") or {}
++    pending = _pending_choices(start_seq, choices)
++    if not pending:
++        await _ask_feat(cb, state)
++        return
++    seq = max(pending)
++    await state.update_data(current_seq=seq)
++    tiers = lotm.PATHWAYS[data["pathway"]]["tiers"][seq]
+     a, b = tiers["choice_a"], tiers["choice_b"]
+-    seq_title = lotm.SEQUENCE_TITLES.get(path, {}).get(seq, f"Посл. {seq}")
+     await state.set_state(Build.choices)
++    left = len(pending)
+     kb = InlineKeyboardMarkup(inline_keyboard=[
+-        [btn(f"Ветка А — {a[0]}", f"bc:{seq}:a")],
+-        [btn(f"Ветка Б — {b[0]}", f"bc:{seq}:b")],
+-        [btn("« Назад к Компетенции", "bc:back")],
++        [btn(f"А — {a[0]}", f"bc:{seq}:a")],
++        [btn(f"Б — {b[0]}", f"bc:{seq}:b")],
+     ])
+     await ui.safe_edit(
+         cb.message,
+-        f"<b>Шаг 5/6 — Специализация Посл. 9 «{esc(seq_title)}»</b>\n\n"
+-        f"<b>Базовое умение Пути (даётся всегда):</b>\n"
+-        f"{esc(core[0])} — <i>{esc(core[4])}</i>\n\n"
+-        f"Выбери дополнительную специализацию 9-й Последовательности:\n\n"
+-        f"<b>[Ветка А] {esc(a[0])}</b>\n<i>{esc(a[4])}</i>\n\n"
+-        f"<b>[Ветка Б] {esc(b[0])}</b>\n<i>{esc(b[4])}</i>",
++        f"<b>Шаг 7/8 — Специализации</b> (осталось выбрать: {left})\n"
++        f"Последовательность {seq}:\n\n"
++        f"<b>[Ветка А]</b> {esc(a[0])}\n<i>{esc(a[4])}</i>\n\n"
++        f"<b>[Ветка Б]</b> {esc(b[0])}\n<i>{esc(b[4])}</i>",
+         kb,
+     )
+     await cb.answer()
+@@ -483,84 +622,94 @@
+ @router.callback_query(F.data.startswith("bc:"))
+ async def cb_choice(cb: CallbackQuery, state: FSMContext):
+     parts = cb.data.split(":")
+-    if len(parts) == 2 and parts[1] == "back":
+-        await _ask_expertise(cb, state)
+-        return
+     if len(parts) != 3 or not parts[1].isdigit() or parts[2] not in ("a", "b"):
+         await cb.answer()
+         return
+     seq = int(parts[1])
+     branch = parts[2]
+-    await state.update_data(choices={str(seq): branch})
+-    await _ask_background(cb, state)
+-
+-
+-async def _ask_background(cb: CallbackQuery, state: FSMContext):
+-    await state.set_state(Build.background)
+-    rows = [[btn(bg["name"], f"bbg:{k}")] for k, bg in lotm.BACKGROUNDS.items()]
+-    rows.append([btn("« Назад к специализации", "bbg:back")])
+-    lines = ["<b>Шаг 5.1/7 — Предыстория (Background)</b>\n\nКем ты был до того, как выпил зелье?\n"]
+-    for bg in lotm.BACKGROUNDS.values():
+-        lines.append(f"• <b>{esc(bg['name'])}</b>\n  <i>{esc(bg['desc'])}</i>")
+-    await ui.safe_edit(cb.message, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows))
+-    await cb.answer()
+-
+-
+-@router.callback_query(F.data.startswith("bbg:"))
+-async def cb_background(cb: CallbackQuery, state: FSMContext):
+-    key = cb.data.split(":", 1)[1]
+-    if key == "back":
++    data = await state.get_data()
++    choices = dict(data.get("choices") or {})
++    choices[str(seq)] = branch
++    await state.update_data(choices=choices)
++    await _ask_choice(cb, state)
++
++
++def _feats_due(start_seq: int) -> int:
++    return lotm.FEATS_AT_SEQUENCE.get(start_seq, 0)
++
++
++async def _ask_feat(cb: CallbackQuery, state: FSMContext):
++    data = await state.get_data()
++    if "pathway" not in data or not data.get("start_seq"):
++        await cb.answer("Сессия конструктора истекла. Запусти /build заново.", show_alert=True)
++        return
++    start = int(data["start_seq"])
++    due = _feats_due(start)
++    feats = list(data.get("feats") or [])
++    if len(feats) >= due:
++        await _ask_bio(cb, state)
++        return
++    available_feats = [k for k in lotm.FEATS if k not in feats]
++
++    lines = [
++        f"🎁 <b>Черты Потустороннего</b> (выбрано {len(feats)} из {due})\n",
++        "Выбери подходящую черту для своего персонажа:\n",
++    ]
++    for k in available_feats:
++        ft = lotm.FEATS[k]
++        lines.append(f"• <b>{esc(ft['name'])}</b>\n  <i>{esc(ft['desc'])}</i>\n")
++
++    rows: list[list[InlineKeyboardButton]] = [
++        [btn(lotm.FEATS[k]["name"], f"bt:{k}")]
++        for k in available_feats
++    ]
++    rows.append([btn("« Выбрать специализации заново", "bt:restart")])
++
++    await state.set_state(Build.feats)
++    await ui.safe_edit(
++        cb.message,
++        "\n".join(lines),
++        InlineKeyboardMarkup(inline_keyboard=rows),
++    )
++    await cb.answer()
++
++
++@router.callback_query(F.data.startswith("bt:"))
++async def cb_feat(cb: CallbackQuery, state: FSMContext):
++    parts = cb.data.split(":", 1)
++    if len(parts) < 2:
++        await cb.answer()
++        return
++    arg = parts[1]
++    if arg == "restart":
++        await state.update_data(choices={}, feats=[])
+         await _ask_choice(cb, state)
+         return
+-    if key not in lotm.BACKGROUNDS:
++    data = await state.get_data()
++    feats = list(data.get("feats") or [])
++    if arg not in lotm.FEATS or arg in feats:
+         await cb.answer()
+         return
+-    await state.update_data(background=key)
+-    await _ask_region(cb, state)
+-
+-
+-async def _ask_region(cb: CallbackQuery, state: FSMContext):
+-    await state.set_state(Build.region)
+-    rows = [[btn(r["name"], f"breg:{k}")] for k, r in lotm.STARTING_REGIONS.items()]
+-    rows.append([btn("« Назад к предыстории", "breg:back")])
+-    lines = [
+-        "<b>Шаг 5.2/7 — Стартовый Регион Мира (Осень 1349 года)</b>\n\n"
+-        "Выбери, в какой точке мира начнётся твоя история:\n"
+-    ]
+-    for r in lotm.STARTING_REGIONS.values():
+-        lines.append(f"• <b>{esc(r['name'])}</b>\n  <i>{esc(r['arc_ru'])}</i>")
+-    await ui.safe_edit(cb.message, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows))
+-    await cb.answer()
+-
+-
+-@router.callback_query(F.data.startswith("breg:"))
+-async def cb_region(cb: CallbackQuery, state: FSMContext):
+-    key = cb.data.split(":", 1)[1]
+-    if key == "back":
+-        await _ask_background(cb, state)
+-        return
+-    if key not in lotm.STARTING_REGIONS:
+-        await cb.answer()
+-        return
+-    await state.update_data(region=key)
+-    await _ask_bio(cb, state)
+-
+-
+-# ---------------------------------------------------------------------------
+-# Шаг 6/6 — Предыстория (по желанию) и мгновенное завершение
+-# ---------------------------------------------------------------------------
++    feats.append(arg)
++    await state.update_data(feats=feats)
++    await _ask_feat(cb, state)
++
+ 
+ async def _ask_bio(event, state: FSMContext) -> None:
++    """Шаг 8: текст анкеты (можно пропустить, можно частями)."""
+     await state.set_state(Build.bio)
+     await state.update_data(bio_parts=[])
+     kb = InlineKeyboardMarkup(inline_keyboard=[
+-        [btn("Пропустить и сразу начать игру", "bbio:skip")],
+-        [btn("Сохранить предысторию", "bbio:done")],
++        [btn("✅ Готово", "bbio:done")],
++        [btn("⏭ Пропустить", "bbio:skip")],
+     ])
+     text = (
+-        "<b>Шаг 6/6 — Предыстория Потустороннего (по желанию)</b>\n\n"
+-        "Опиши внешность, характер и то, как твой персонаж выпил своё первое зелье (до 7000 символов).\n\n"
+-        "• Хочешь сразу ворваться в сюжет и бои — нажми <b>«Пропустить и сразу начать игру»</b> (дописать анкету можно в любой момент через /me)."
++        "<b>Шаг 8/8 — Анкета</b>\n\n"
++        "Напиши анкету Потустороннего: внешность, характер, кем ты был до "
++        "Прикосновения и как обрёл Силу. До 7000 символов.\n\n"
++        "Если текст не влезает в одно сообщение — шли частями: я их склею. "
++        "Когда закончишь, нажми «✅ Готово».\n\n"
++        "Можно пропустить и заполнить позже через /me — тогда персонаж останется черновиком."
+     )
+     if isinstance(event, CallbackQuery):
+         await ui.safe_edit(event.message, text, kb)
+@@ -569,13 +718,15 @@
+ 
+ 
+ def _join_bio(parts: list) -> str:
++    """Склейка частей анкеты: отдельные сообщения абзацами, переносы строк сохраняются."""
+     return "\n\n".join(p.strip() for p in parts if p and p.strip())
+ 
+ 
+ async def _finish_bio(event, state: FSMContext, bot: Bot, parts: list) -> None:
++    """Валидация склеенного текста и переход к финалу."""
+     raw = _join_bio(parts)
+     if not raw:
+-        await event.answer("Предыстория пустая. Пришли текст или нажми «Пропустить».")
++        await event.answer("Анкета пустая. Пришли текст или нажми «Пропустить».")
+         return
+     value, err = ui.parse_field("bio", raw)
+     if err:
+@@ -588,7 +739,7 @@
+ @router.callback_query(F.data == "bbio:done")
+ async def cb_bio_done(cb: CallbackQuery, state: FSMContext, bot: Bot):
+     data = await state.get_data()
+-    if not data.get("pathway"):
++    if "pathway" not in data or not data.get("start_seq"):
+         await cb.answer("Сессия конструктора истекла. Запусти /build заново.", show_alert=True)
+         return
+     await _finish_bio(cb.message, state, bot, data.get("bio_parts") or [])
+@@ -597,7 +748,7 @@
+ @router.callback_query(F.data == "bbio:skip")
+ async def cb_bio_skip(cb: CallbackQuery, state: FSMContext, bot: Bot):
+     data = await state.get_data()
+-    if not data.get("pathway"):
++    if "pathway" not in data or not data.get("start_seq"):
+         await cb.answer("Сессия конструктора истекла. Запусти /build заново.", show_alert=True)
+         return
+     await _finish(cb, state, bot)
+@@ -611,7 +762,7 @@
+         await _finish_bio(message, state, bot, list(data.get("bio_parts") or []))
+         return
+     if raw.startswith("/"):
+-        await message.answer("Пришли текст предыстории, нажми кнопку ниже или /cancel.")
++        await message.answer("Пришли текст анкеты или нажми «Готово», либо /cancel.")
+         return
+     data = await state.get_data()
+     parts = list(data.get("bio_parts") or [])
+@@ -619,87 +770,106 @@
+     total = sum(len(p) for p in parts) + 2 * (len(parts) - 1)
+     if total > 7000:
+         parts.pop()
+-        await message.answer(f"Слишком длинно ({total}/7000). Сократи последнюю часть.")
++        await message.answer(
++            f"Слишком длинно: суммарно {total} символов, лимит 7000. "
++            "Удали последнюю часть и сократи текст."
++        )
+         return
+     await state.update_data(bio_parts=parts)
+-    await message.answer(
+-        f"Принято ({total}/7000). Нажми «Сохранить предысторию» для завершения:",
+-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[btn("Сохранить предысторию", "bbio:done")]]),
+-    )
+-
++    left = 7000 - total
++    if left < 3500:
++        await message.answer(
++            f"Принято ({total}/7000). Шли ещё часть или нажми «✅ Готово» под этим сообщением.",
++            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[btn("✅ Готово", "bbio:done")]]),
++        )
++    else:
++        await message.answer(f"Принято ({total}/7000). Шли следующую часть или нажми «✅ Готово» (кнопка под сообщением шага 8).")
++
++
++# ---------------------------------------------------------------------------
++# Финал: запись билда в анкету
++# ---------------------------------------------------------------------------
+ 
+ async def _finish(event, state: FSMContext, bot: Bot):
+     cb = event if isinstance(event, CallbackQuery) else None
+     user = event.from_user
+     data = await state.get_data()
+-    if not data.get("pathway"):
++    if not all(k in data for k in ("faction", "pathway", "start_seq")):
+         if cb is not None:
+-            await cb.answer("Сессия конструктора истекла. Запусти /build", show_alert=True)
++            await cb.answer(
++                "Сессия конструктора истекла. Пройди анкету заново: /build",
++                show_alert=True,
++            )
+         else:
+-            await event.answer("Сессия конструктора истекла. Запусти /build")
++            await event.answer("Сессия конструктора истекла. Пройди анкету заново: /build")
+         return
+ 
+     uid = int(data.get("uid") or user.id)
++    faction = data["faction"]
+     path = data["pathway"]
+-    seq = START_SEQUENCE
+-
++    seq = int(data["start_seq"])
++    subtype = data.get("subtype", "")
++
++    # Базовые статы из Point-Buy (ровно 27 очков, без фракционных бонусов)
+     base = data.get("stats") or data.get("stats_pb") or dict(rules.POINTBUY_DEFAULT)
+     stats = {k: int(base.get(k, 10)) for k in rules.ABILITIES}
+-    for stat, bonus in lotm.pathway_stat_bonus(path).items():
++    # Фракционные бонусы начисляются строго один раз поверх базы Point-Buy (кап 30)
++    for stat, bonus in lotm.FACTIONS[faction].get("stat_bonus", {}).items():
+         stats[stat] = min(30, stats.get(stat, 10) + int(bonus))
+ 
+-    bg_key = data.get("background") or "detective"
+-    reg_key = data.get("region") or "tingen"
+-    bg_info = lotm.BACKGROUNDS.get(bg_key, lotm.BACKGROUNDS["detective"])
+-    for stat, bonus in bg_info["stat_bonus"].items():
+-        stats[stat] = min(30, stats.get(stat, 10) + int(bonus))
++    old = await db.get_character(uid)
+     if old is None:
+         await db.create_draft(uid, user.username)
+         old = await db.get_character(uid) or {}
+ 
+-    choices = {str(k): v for k, v in (data.get("choices") or {"9": "a"}).items()}
++    conds = [x for x in (old.get("conditions") or []) if not str(x).startswith("perk:")]
++    fac_new = lotm.FACTIONS[faction]
++    sub_new = next((s for s in fac_new.get("subtypes", []) if s["id"] == subtype), None)
++    if sub_new:
++        conds.append(f"perk:{subtype}")
++    conds = sorted(set(conds))
++
++    feats = list(data.get("feats") or [])
++    choices = {str(k): v for k, v in (data.get("choices") or {}).items()}
+     con_mod = rules.ability_mod(stats["con"])
+     max_hp = rules.sequence_max_hp(
+         path,
+         seq,
+         con_mod,
+-        [],
+-        faction_perk="",
++        feats,
++        faction_perk=subtype,
+         pathway_choices=choices,
+     )
+-    slots = lotm.spell_slots_for(seq, [])
++    slots = lotm.spell_slots_for(seq, feats)
+     ac = 10 + rules.ability_mod(stats["dex"])
+ 
+     char_name = (data.get("name") or old.get("name") or user.full_name or "Без имени").strip()[:40]
+-    bio_text = (data.get("bio") or "").strip() or "Потусторонний 9-й Последовательности."
+-
++    bio_text = (data.get("bio") or "").strip()
++    old_bio = (old.get("bio") or "").strip()
++    bio_value = bio_text or old_bio
++    has_bio = bool(bio_value)
++    final_status = "approved" if is_admin(uid) else ("pending" if has_bio else "draft")
++
++    # Навыки: записываем ровно те, что выбраны в конструкторе
+     picked_skills = [k for k in (data.get("skills") or []) if k in rules.SKILLS]
+-    exp_key = data.get("expertise")
+-    skill_map = {k: (2 if k == exp_key else 1) for k in picked_skills}
+-    if bg_info["free_skill"] in rules.SKILLS and bg_info["free_skill"] not in skill_map:
+-        skill_map[bg_info["free_skill"]] = 1
+-    seq_title = lotm.SEQUENCE_TITLES.get(path, {}).get(seq, f"Посл. {seq}")
+-
++    skill_map = {k: 1 for k in picked_skills}
+     char_data = dict(
+         username=user.username,
+         name=char_name,
+-        bio=bio_text,
+-        faction=bg_key,
+-        faction_perk=reg_key,
++        bio=bio_value,
++        faction=faction,
++        faction_perk=subtype,
+         pathway=path,
+         sequence=seq,
+         start_sequence=seq,
+         level=lotm.OPEN_TIERS[seq],
+         stats=stats,
+-        conditions=[],
+-        race=bg_info["name"],
+-        char_class=f"{lotm.PATHWAYS[path]['name']} — {seq_title}",
++        conditions=conds,
++        race=fac_new["name"],
++        char_class=lotm.PATHWAYS[path]["name"],
+         pathway_choices=choices,
+-        feats=[],
++        feats=feats,
+         skills=skill_map,
+-        sanity=100,
+-        digestion=0,
+-        class_resource=lotm.PATHWAY_MECHANICS.get(path, {}).get("max_base", 3),
+         max_hp=max_hp,
+         hp=max_hp,
+         temp_hp=0,
+@@ -707,49 +877,47 @@
+         saves=lotm.PATHWAYS[path].get("saves", []),
+         hit_dice_left=lotm.OPEN_TIERS[seq],
+         spell_slots={str(r): {"total": n, "left": n} for r, n in slots.items()},
+-        status="approved",
++        status=final_status,
+     )
+     char_data["lair_uses"] = h_perks.reset_combat_uses(char_data)
+ 
+     await db.update_character(uid, **char_data)
+-
+-    reg_info = lotm.STARTING_REGIONS.get(reg_key, lotm.STARTING_REGIONS["tingen"])
+-    await db.get_story_session(uid)
+-    await db.update_story_session(
+-        uid,
+-        location=reg_info["location"],
+-        current_arc=reg_info["arc_ru"],
+-        summary=f"Предыстория: {bg_info['name']}. Регион старта: {reg_info['name']}.",
+-        clues=[f"💰 Капитал: {bg_info['gold']} золотых фунтов", f"🎒 {bg_info['gear']}"],
+-        npcs=[],
+-        history=[],
+-        options=[],
+-    )
+     await state.clear()
+ 
+     c2 = await db.get_character(uid)
++    if final_status == "pending" and c2 is not None:
++        try:
++            await ui.notify_admins(
++                bot,
++                c2,
++                f"Билд собран и ожидает проверки: {c2['name']} (ID {uid}).",
++            )
++        except Exception:
++            pass
++
+     skills = rules.path_skills(path, {int(k): v for k, v in c2["pathway_choices"].items()}, seq, seq)
++    dex_mod = rules.ability_mod(c2["stats"]["dex"])
+     eff_ac = c2["ac"] + h_perks.ac_bonus(c2)
+-    p_mech = lotm.PATHWAY_MECHANICS.get(path, {})
+     lines = [
+-        "Зелье выпито! Персонаж готов к игре.\n",
+-        f"<b>{esc(c2['name'])}</b> — Потусторонний",
+-        f"<b>{esc(lotm.PATHWAYS[path]['name'])}</b> · Посл. 9 «<b>{esc(seq_title)}</b>»",
+-        f"ОЗ: <b>{max_hp}</b> | Защита: <b>{eff_ac}</b> | Рассудок: <b>100%</b> | Переваривание: <b>0%</b>",
+-        f"Ячейки духовности: {', '.join(f'Р{r}x{n}' for r, n in sorted(slots.items())) or 'нет'}",
+-        f"Механика Пути: <b>{esc(p_mech.get('name', '—'))}</b> ({p_mech.get('max_base', 3)} заряда)\n",
+-        "<b>Открытые способности:</b>",
++        "✅ <b>Билд собран!</b>\n",
++        f"👤 Имя: <b>{esc(c2['name'])}</b>",
++        f"<b>{esc(fac_new['name'])}</b>" + (f" — {esc(sub_new['name'])}" if sub_new else ""),
++        f"<b>{esc(lotm.PATHWAYS[path]['name'])}</b>, стартовая Посл. <b>{seq}</b>",
++        f"❤️ Здоровье: {max_hp} | 🛡 Защита: {eff_ac} | 🎯 Мастерство: + {rules.sequence_prof_bonus(seq)}",
++        f"🧙 Ячейки духовности: {', '.join(f'Р{r}×{n}' for r, n in sorted(slots.items())) or 'нет'}",
++        f"(База Защиты: 10 + мод ЛОВ = 10{dex_mod:+d})\n",
++        "<b>Умения билда:</b>",
+     ]
+     for sk in skills:
+         lines.append(f"• {_fmt_skill(sk)}")
+-    lines.append("\nИспользуй /abilities для управления способностями, /me для карточки персонажа и /promote для отслеживания переваривания зелья.")
++    if c2["feats"]:
++        lines.append("\n<b>Черты Потустороннего:</b>")
++        for f in c2["feats"]:
++            if f in lotm.FEATS:
++                lines.append(f"• <b>{esc(lotm.FEATS[f]['name'])}</b> — {esc(lotm.FEATS[f]['desc'])}")
+     result_text = "\n".join(lines)
+-    play_kb = InlineKeyboardMarkup(inline_keyboard=[
+-        [btn("🌫 Начать сюжет с ИИ-Мастером (/story)", "st:resume")],
+-        [btn("⚔️ Охота на Потустороннего (Бой 1-на-1)", "st:hunt")],
+-    ])
+     if cb is not None:
+-        await ui.safe_edit(cb.message, result_text, play_kb)
+-        await cb.answer("Персонаж создан!")
++        await ui.safe_edit(cb.message, result_text)
++        await cb.answer("Готово!")
+     else:
+-        await event.answer(result_text, reply_markup=play_kb)
++        await event.answer(result_text)

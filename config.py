@@ -52,13 +52,43 @@ TRIBUTE_LINK: str = os.getenv("TRIBUTE_LINK", "").strip()
 
 WELCOME_TURNS = 15           # Разовый стартовый пакет при регистрации
 FREE_DAILY_TURNS = 3         # Ежедневный минимум бесплатного игрока (не копится выше 3)
-VIP_MONTHLY_POOL = 450       # Строгий месячный пул ходов при покупке VIP «Святилище» (390 ⭐️)
-VIP_PLUS_MONTHLY_POOL = 800  # Пул для тарифа «Святилище+» (590 ⭐️)
+
+# --- ЭКОНОМИКА ХОДОВ (единый источник истины, см. h_shop.PACKS) -------------
+# Эталон розницы: turns_40 = 40 ходов за 65 ⭐️ -> ~1.63 ⭐️ за ход.
+# VIP не «дарит» пул, а ДЕЙСТВИТЕЛЬНО пополняет баланс каждые сутки до уровня тарифа
+# (раньше в описании обещали «80 ходов каждый день», а код пополнял только до 3).
+VIP_DAILY_TURNS: int = int(os.getenv("VIP_DAILY_TURNS", "13"))        # 13/день × 30 ≈ 390 ходов за 390 ⭐️ (~1.0 ⭐️/ход)
+VIP_PLUS_DAILY_TURNS: int = int(os.getenv("VIP_PLUS_DAILY_TURNS", "25"))  # 25/день × 30 = 750 ходов за 590 ⭐️ (~0.79 ⭐️/ход)
+VIP_START_POOL: int = int(os.getenv("VIP_START_POOL", "13"))          # моментальное пополнение в момент покупки
+VIP_PLUS_START_POOL: int = int(os.getenv("VIP_PLUS_START_POOL", "25"))
+VIP_MEMORY_MULT = 2          # Глубина летописи ИИ для VIP (x2 к бесплатному лимиту)
+
+# «Дело дня»: один бесплатный ход за сутки за вход в игру (ретеншн-механика)
+DAILY_CASE_TURNS: int = int(os.getenv("DAILY_CASE_TURNS", "1"))
+
+# Рефералка: бонус начисляется ТОЛЬКО после первого реального хода приглашённого (анти-фарм фейками)
+REFERRAL_INVITER_TURNS: int = int(os.getenv("REFERRAL_INVITER_TURNS", "10"))
+REFERRAL_INVITER_FATE: int = int(os.getenv("REFERRAL_INVITER_FATE", "1"))
+REFERRAL_NEWCOMER_TURNS: int = int(os.getenv("REFERRAL_NEWCOMER_TURNS", "5"))
+REFERRAL_MAX_AGE_DAYS: int = int(os.getenv("REFERRAL_MAX_AGE_DAYS", "3"))   # бонус только «свежим» аккаунтам
+REFERRAL_DAILY_CAP: int = int(os.getenv("REFERRAL_DAILY_CAP", "5"))         # макс. наград пригласившему в сутки
+
+# Месячные пулы (для вебхука Lava и админ-выдачи): производные от суточных тарифов
+VIP_MONTHLY_POOL: int = int(os.getenv("VIP_MONTHLY_POOL", str(VIP_DAILY_TURNS * 30)))
+VIP_PLUS_MONTHLY_POOL: int = int(os.getenv("VIP_PLUS_MONTHLY_POOL", str(VIP_PLUS_DAILY_TURNS * 30)))
+
 GLOBAL_FREE_DAILY_CAP: int = int(os.getenv("GLOBAL_FREE_DAILY_CAP", "1500"))  # Макс. бесплатных ИИ-ходов в сутки на весь сервер
 LAVA_WEBHOOK_SECRET = os.getenv("LAVA_WEBHOOK_SECRET", "").strip()
 
-# DEV / GOD-MODE: включён по умолчанию для тестов, отключается одной переменной в .env
-DEV_MODE: bool = os.getenv("DEV_MODE", "1").strip() in ("1", "true", "yes")
+# DEV / GOD-MODE: по умолчанию ВЫКЛЮЧЕН (в проде чит-панель не должна висеть открытой)
+DEV_MODE: bool = os.getenv("DEV_MODE", "0").strip() in ("1", "true", "yes")
+
+# Веб-платформа: разрешать ли запросы без подписи Telegram initData.
+# 1 — публичный сайт-витрина (любой может играть под своим локальным uid),
+# 0 — жёстко требовать подписанный initData (только Mini App).
+ALLOW_ANON_WEB: bool = os.getenv("ALLOW_ANON_WEB", "1").strip() in ("1", "true", "yes")
+# Список разрешённых Origin через запятую. Пусто -> "*" (без credentials).
+WEB_ORIGINS: list[str] = [o.strip() for o in os.getenv("WEB_ORIGINS", "").split(",") if o.strip()]
 
 
 def is_dev(user_id: int | None) -> bool:

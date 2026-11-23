@@ -346,6 +346,15 @@ _STORY_EXTRA_COLUMNS = {
     "referred_by": "INTEGER NOT NULL DEFAULT 0",
     "referrals_count": "INTEGER NOT NULL DEFAULT 0",
     "notified_low_turns": "INTEGER NOT NULL DEFAULT 0",
+    # --- экономика v2: тариф VIP, «Дело дня», отложенная награда за реферала ---
+    "vip_plan": "TEXT NOT NULL DEFAULT ''",             # '' | vip | plus
+    "created_at": "INTEGER NOT NULL DEFAULT 0",         # когда игрок впервые открыл сюжет
+    "referral_pending": "INTEGER NOT NULL DEFAULT 0",   # 1 = реферал зафиксирован, награда ждёт 1-го хода новичка
+    "referral_rewarded": "INTEGER NOT NULL DEFAULT 0",  # 1 = награда пригласившему уже начислена
+    "last_daily_case": "INTEGER NOT NULL DEFAULT 0",    # день (YYYYMMDD), когда взято «Дело дня»
+    "pending_artifact": "INTEGER NOT NULL DEFAULT 0",   # 1 = оплаченный артефакт ждёт выбора в хранилище
+    "ref_day": "INTEGER NOT NULL DEFAULT 0",            # день суточного капа реферальных наград
+    "ref_bonus": "INTEGER NOT NULL DEFAULT 0",          # сколько реферальных наград выдано в этот день
 }
 
 
@@ -787,15 +796,19 @@ async def get_story_session(user_id: int) -> dict:
     if row is None:
         now = int(time.time())
         await _q(
-            "INSERT INTO story_sessions (user_id, lang, turns_left, daily_day, vip_until, fate_tokens, gm_mode, chapter, location, updated_at) "
-            "VALUES (?, 'ru', ?, ?, 0, 2, 'canon', 1, 'Тинген, улица Железного Креста', ?)",
-            (user_id, config.WELCOME_TURNS, today, now),
+            "INSERT INTO story_sessions (user_id, lang, turns_left, daily_day, vip_until, fate_tokens, gm_mode, chapter, location, created_at, updated_at) "
+            "VALUES (?, 'ru', ?, ?, 0, 2, 'canon', 1, 'Тинген, улица Железного Креста', ?, ?)",
+            (user_id, config.WELCOME_TURNS, today, now, now),
         )
         row = await _q("SELECT * FROM story_sessions WHERE user_id=?", (user_id,), "one")
     s = _decode_session(row)
-    # Ежедневное пополнение: бесплатным игрокам доводим баланс до 3 (не копится выше 3)
+    # Ежедневное пополнение: баланс доводится до суточного уровня тарифа,
+    # но НЕ копится выше него (защита от «накопил 300 ходов и играешь месяц»).
     if int(s.get("daily_day") or 0) < today:
-        new_turns = max(int(s.get("turns_left") or 0), config.FREE_DAILY_TURNS)
+        target = _daily_target(s)
+        balance = int(s.get("turns_left") or 0)
+        # Купленные отдельно ходы (баланс выше суточного уровня) не сгорают.
+        new_turns = balance if balance > target else target
         await _q(
             "UPDATE story_sessions SET turns_left=?, daily_day=?, updated_at=? WHERE user_id=?",
             (new_turns, today, int(time.time()), user_id),
@@ -805,47 +818,80 @@ async def get_story_session(user_id: int) -> dict:
     return s
 
 
+def _daily_target(session: dict) -> int:
+    """Суточный уровень ходов по тарифу игрока (VIP+ > VIP > базовый)."""
+    if session.get("is_vip"):
+        plan = str(session.get("vip_plan") or "")
+        if plan == "plus":
+            return max(1, int(config.VIP_PLUS_DAILY_TURNS))
+        return max(1, int(config.VIP_DAILY_TURNS))
+    return max(0, int(config.FREE_DAILY_TURNS))
+
+
 async def try_consume_turn(user_id: int, is_dev: bool = False) -> tuple[bool, str]:
-    """Атомарно проверяет и списывает 1 ход ИИ-Мастера с защитой глобального бесплатного бюджета."""
+    """Атомарно проверяет и списывает 1 ход ИИ-Мастера с защитой глобального бесплатного бюджета.
+
+    Раньше здесь был классический TOCTOU: SELECT -> проверка -> UPDATE. Два параллельных
+    запроса от одного игрока (веб-клиент шлёт /roll и /turn почти одновременно) могли
+    пройти проверку оба и получить больше ходов, чем есть на счёте. Теперь списание —
+    один атомарный UPDATE ... WHERE turns_left > 0 с проверкой rowcount.
+    """
     if is_dev:
         return True, "dev"
     s = await get_story_session(user_id)
-    turns = int(s.get("turns_left") or 0)
-    if turns <= 0:
-        return False, "no_turns"
 
     today = _today_int()
-    is_paid_user = bool(s.get("is_vip")) or turns > config.FREE_DAILY_TURNS
+    balance = int(s.get("turns_left") or 0)
+    if balance <= 0:
+        return False, "no_turns"
+
+    # Платный ли это ход (VIP или баланс выше бесплатной суточной нормы)
+    is_paid_user = bool(s.get("is_vip")) or balance > int(config.FREE_DAILY_TURNS)
 
     if not is_paid_user:
-        row = await _q("SELECT free_turns FROM server_daily_usage WHERE day_int=?", (today,), "one")
-        used_today = int(row["free_turns"]) if row else 0
-        if used_today >= config.GLOBAL_FREE_DAILY_CAP:
-            return False, "global_cap_reached"
-        await _q(
+        # Атомарный инкремент с условием: бюджет не будет превышен даже при гонке.
+        used = await _q(
             "INSERT INTO server_daily_usage (day_int, free_turns, paid_turns) VALUES (?, 1, 0) "
-            "ON CONFLICT(day_int) DO UPDATE SET free_turns = free_turns + 1",
-            (today,),
+            "ON CONFLICT(day_int) DO UPDATE SET free_turns = free_turns + 1 "
+            "WHERE server_daily_usage.free_turns < ?",
+            (today, int(config.GLOBAL_FREE_DAILY_CAP)),
+            "rowcount",
         )
-    else:
+        if not used:
+            return False, "global_cap_reached"
+
+    # Атомарное списание ровно одного хода (не уводит баланс в минус)
+    taken = await _q(
+        "UPDATE story_sessions SET turns_left = turns_left - 1, updated_at = ? "
+        "WHERE user_id = ? AND turns_left > 0",
+        (int(time.time()), user_id),
+        "rowcount",
+    )
+    if not taken:
+        # Ход не списан (гонка/обнуление) — возвращаем инкремент бесплатного бюджета,
+        # чтобы не «съедать» серверную квоту впустую.
+        if not is_paid_user:
+            await _q(
+                "UPDATE server_daily_usage SET free_turns = free_turns - 1 "
+                "WHERE day_int = ? AND free_turns > 0",
+                (today,),
+            )
+        return False, "no_turns"
+
+    if is_paid_user:
         await _q(
             "INSERT INTO server_daily_usage (day_int, free_turns, paid_turns) VALUES (?, 0, 1) "
             "ON CONFLICT(day_int) DO UPDATE SET paid_turns = paid_turns + 1",
             (today,),
         )
-
-    await _q(
-        "UPDATE story_sessions SET turns_left = MAX(0, turns_left - 1), updated_at = ? WHERE user_id = ?",
-        (int(time.time()), user_id),
-    )
     return True, "ok"
 
 
 async def update_story_session(user_id: int, **fields) -> dict:
     allowed = {
         "lang", "turns_left", "daily_day", "vip_until", "fate_tokens", "fate_seal_used", "gm_mode",
-        "chapter", "location", "current_arc", "summary",
         "clues", "npcs", "history", "options", "last_fail", "enemy", "consequences",
+        "vip_plan", "referral_rewarded", "referral_pending", "last_daily_case", "pending_artifact",
     }
     json_keys = {"clues", "npcs", "history", "options", "last_fail", "enemy", "consequences"}
     cols, vals = [], []
@@ -885,14 +931,25 @@ async def add_fate_tokens(user_id: int, amount: int) -> dict:
     return await get_story_session(user_id)
 
 
-async def activate_vip(user_id: int, days: int = 30, pool: int = 450) -> dict:
-    """Активирует/продлевает VIP и начисляет +pool ходов единоразово (строгий месячный пул)."""
+async def activate_vip(user_id: int, days: int = 30, pool: int | None = None, plan: str = "vip") -> dict:
+    """Активирует/продлевает VIP и начисляет стартовый пул ходов тарифа.
+
+    Дальше баланс пополняется автоматически каждые сутки до суточного уровня тарифа
+    (см. get_story_session -> _daily_target), а не единым куском на весь месяц:
+    иначе игрок за один вечер сжигает весь месячный пул и уходит.
+    """
     s = await get_story_session(user_id)
     now = int(time.time())
     base = max(now, int(s.get("vip_until") or 0))
     new_until = base + int(days) * 86400
-    new_turns = int(s.get("turns_left") or 0) + int(pool)
-    return await update_story_session(user_id, vip_until=new_until, turns_left=new_turns)
+    if pool is None:
+        pool = config.VIP_PLUS_START_POOL if plan == "plus" else config.VIP_START_POOL
+    # Стартовый пул не копится: доводим баланс до уровня пула, если он ниже.
+    balance = int(s.get("turns_left") or 0)
+    new_turns = balance if balance > int(pool) else max(balance, int(pool))
+    return await update_story_session(
+        user_id, vip_until=new_until, vip_plan=plan, turns_left=new_turns
+    )
 
 
 async def log_payment(user_id: int, pack_id: str, stars_amount: int, charge_id: str) -> bool:
@@ -914,26 +971,112 @@ async def log_payment(user_id: int, pack_id: str, stars_amount: int, charge_id: 
 
 
 async def apply_referral(new_user_id: int, ref_id: int) -> bool:
-    """Начисляет бонус пригласившему (+10 ходов и +1 Печать Судьбы) и новичку (+5 ходов), если новичок ещё не активировал рефералку."""
+    """Фиксирует приглашение и выдаёт новичку его бонус.
+
+    Ключевая защита от накрутки: награда ПРИГЛАСИВШЕМУ не начисляется сразу, а
+    ставится в отложенную очередь (referral_pending=1) и выплачивается только
+    после первого реального хода новичка — см. claim_referral_reward().
+    Фейковый «друг», который запустил бота и закрыл, ничего не приносит.
+    """
     if new_user_id == ref_id or ref_id <= 0:
         return False
     s_new = await get_story_session(new_user_id)
     if int(s_new.get("referred_by") or 0) != 0:
         return False
-    # Проверяем, существует ли пригласивший
+    # Приглашённый должен быть новичком: сессия создана только что
+    created = int(s_new.get("created_at") or s_new.get("updated_at") or 0)
+    if created and (int(time.time()) - created) > config.REFERRAL_MAX_AGE_DAYS * 86400:
+        return False
+    # Пригласивший обязан существовать
     inviter = await get_character(ref_id)
     inv_sess = await _q("SELECT user_id FROM story_sessions WHERE user_id=?", (ref_id,), "one")
     if not inviter and not inv_sess:
         return False
-    now = int(time.time())
-    await _q(
-        "UPDATE story_sessions SET referred_by=?, turns_left=turns_left+5, updated_at=? WHERE user_id=?",
-        (ref_id, now, new_user_id),
+    # Атомарная фиксация: только если referred_by всё ещё пуст (защита от гонки)
+    claimed = await _q(
+        "UPDATE story_sessions SET referred_by=?, referral_pending=1, "
+        "turns_left=turns_left+?, updated_at=? WHERE user_id=? AND referred_by=0",
+        (ref_id, int(config.REFERRAL_NEWCOMER_TURNS), int(time.time()), new_user_id),
+        "rowcount",
     )
-    await get_story_session(ref_id)
+    return bool(claimed)
+
+
+async def refund_turn(user_id: int, is_dev: bool = False) -> None:
+    """Возвращает 1 ход, если генерация ИИ сорвалась (игрок не должен платить за сбой).
+
+    Именно инкремент, а не запись сохранённого баланса: иначе покупка ходов,
+    совершённая во время 85-секундной генерации, будет затёрта старым значением.
+    """
+    if is_dev:
+        return
     await _q(
-        "UPDATE story_sessions SET turns_left=turns_left+10, fate_tokens=fate_tokens+1, referrals_count=referrals_count+1, updated_at=? WHERE user_id=?",
-        (now, ref_id),
+        "UPDATE story_sessions SET turns_left = turns_left + 1, updated_at = ? WHERE user_id = ?",
+        (int(time.time()), user_id),
+    )
+
+
+async def claim_daily_case(user_id: int) -> tuple[bool, str]:
+    """«Дело дня»: один бесплатный ход за календарные сутки (UTC).
+
+    Возвращает (начислено, причина). Атомарный UPDATE по last_daily_case
+    исключает двойное получение при двойном клике/параллельных запросах.
+    """
+    s = await get_story_session(user_id)
+    today = _today_int()
+    if int(s.get("last_daily_case") or 0) >= today:
+        return False, "already_claimed"
+    # Ключевое условие «сегодня ещё не брали» переносим в сам UPDATE — гонка невозможна.
+    claimed = await _q(
+        "UPDATE story_sessions SET turns_left=turns_left+?, last_daily_case=?, updated_at=? "
+        "WHERE user_id=? AND last_daily_case < ?",
+        (int(config.DAILY_CASE_TURNS), today, int(time.time()), user_id, today),
+        "rowcount",
+    )
+    if not claimed:
+        return False, "already_claimed"
+    return True, "ok"
+
+
+async def claim_referral_reward(user_id: int) -> bool:
+    """Выплата отложенной награды пригласившему — после ПЕРВОГО хода новичка.
+
+    Атомарный переход referral_pending 1 -> 0 гарантирует, что награда не задвоится
+    ни при параллельных запросах, ни при повторном вызове.
+    """
+    s = await get_story_session(user_id)
+    if not int(s.get("referral_pending") or 0) or int(s.get("referral_rewarded") or 0):
+        return False
+    ref_id = int(s.get("referred_by") or 0)
+    if ref_id <= 0:
+        return False
+    closed = await _q(
+        "UPDATE story_sessions SET referral_pending=0, referral_rewarded=1, updated_at=? "
+        "WHERE user_id=? AND referral_pending=1 AND referral_rewarded=0",
+        (int(time.time()), user_id),
+        "rowcount",
+    )
+    if not closed:
+        return False
+    # Суточный кап наград пригласившему (защита от массового фарма)
+    today = _today_int()
+    cap_row = await _q(
+        "SELECT ref_day, ref_bonus FROM story_sessions WHERE user_id=?", (ref_id,), "one"
+    ) or {}
+    already = int(cap_row.get("ref_bonus") or 0) if int(cap_row.get("ref_day") or 0) == today else 0
+    if already >= int(config.REFERRAL_DAILY_CAP):
+        return False
+    await _q(
+        "UPDATE story_sessions SET turns_left=turns_left+?, fate_tokens=fate_tokens+?, "
+        "referrals_count=referrals_count+1, ref_day=?, ref_bonus=?, updated_at=? WHERE user_id=?",
+        (
+            int(config.REFERRAL_INVITER_TURNS),
+            int(config.REFERRAL_INVITER_FATE),
+            today,
+            already + 1,
+            int(time.time()),
+            ref_id,
+        ),
     )
     return True
 

@@ -1,0 +1,871 @@
+--- base
++++ server-hotfix
+@@ -1,8 +1,10 @@
+-"""Анкеты игроков в личке с ботом: создание, просмотр, редактирование."""
++"""Создание, просмотр и редактирование анкеты персонажа (/newchar, /me, /done, /cancel)."""
+ from __future__ import annotations
+ 
++import logging
++
+ from aiogram import Bot, F, Router
+-from aiogram.filters import Command, CommandStart
++from aiogram.filters import Command
+ from aiogram.fsm.context import FSMContext
+ from aiogram.fsm.state import State, StatesGroup
+ from aiogram.types import (
+@@ -10,346 +12,534 @@
+     InlineKeyboardButton,
+     InlineKeyboardMarkup,
+     Message,
+-    User,
+ )
+ 
+ import config
+ import db
+-import h_perks
+-import lotm_data as lotm
+-import rules
+ import ui
+-from filters_admin import is_admin
+-from ui import FIELDS, MECHANICAL
+-
+-router = Router()
+-router.message.filter(F.chat.type == "private")
+-router.callback_query.filter(F.message.chat.type == "private")
+-
+-
+-class Form(StatesGroup):
+-    edit = State()     # правка одного поля (data: uid, field)
+-
+-
+-WELCOME = (
+-    "🕯 <b>Добро пожаловать в мир «Повелителя Тайн» (Lord of the Mysteries)!</b>\n\n"
+-    "Это живая настольная RPG с <b>ИИ-Мастером</b> и всеми <b>22 каноничными Путями</b> (Посл. 9 → 0).\n"
+-    "💬 <b>Полная свобода D&D:</b> в любой сцене и даже в бою ты можешь жать кнопки ИЛИ <b>просто писать в чат любые свои действия, фразы и безумные трюки</b> — система сама подберёт навык, бросит d20 и встроит это в сюжет!\n\n"
+-    "<b>Основные команды:</b>\n"
+-    "🔮 /build — выпить зелье 9-й Последовательности и создать персонажа\n"
+-    "🌫 /story — сюжет с ИИ-Мастером\n"
+-    "🎭 /mode — переключить стиль Мастера (Мрачный Канон / Безумный D&D-Угар)\n"
+-    "📓 /journal — дневник улик, NPC и Метод Отыгрыша\n"
+-    "⚔️ /hunt — соло-бой 1-на-1\n"
+-    "👤 /me — карточка Потустороннего\n"
+-    "✨ /abilities — способности и механика Пути\n"
+-    "🧪 /promote — ритуал повышения Последовательности\n"
+-    "🏛 /shop — Святилище Серого Тумана (Духовность, Печати Судьбы, Артефакты)\n"
+-    "🌐 /lang — язык (RU / EN)"
+-)
+-
+-
+-
+-def allowed(editor_id: int, owner_id: int) -> bool:
+-    if editor_id == owner_id or config.is_chief(editor_id):
+-        return True
+-    if owner_id in config.ADMIN_IDS:
+-        return False
+-    return editor_id in config.ADMIN_IDS
+-
+-
+-@router.message(CommandStart())
+-async def cmd_start(message: Message, state: FSMContext, bot: Bot):
+-    await state.clear()
++
++log = logging.getLogger(__name__)
++router = Router(name="profile")
++
++
++class ProfileState(StatesGroup):
++    name = State()
++    bio = State()
++    photo_id = State()
++
++
++def _done_kb(step: str = "bio") -> InlineKeyboardMarkup:
++    if step == "bio":
++        return InlineKeyboardMarkup(
++            inline_keyboard=[
++                [InlineKeyboardButton(text="✅ Завершить анкету (/done)", callback_data="prof:done")],
++                [InlineKeyboardButton(text="🚫 Отмена (/cancel)", callback_data="prof:cancel")],
++            ]
++        )
++    return InlineKeyboardMarkup(
++        inline_keyboard=[
++            [InlineKeyboardButton(text="⏭ Пропустить фото (/done)", callback_data="prof:done")],
++            [InlineKeyboardButton(text="🚫 Отмена (/cancel)", callback_data="prof:cancel")],
++        ]
++    )
++
++
++def _can_edit(actor_id: int, target_uid: int) -> bool:
++    return actor_id == target_uid or actor_id in config.ADMIN_IDS
++
++
++async def _finish_Editing_or_wizard(
++    bot: Bot,
++    chat_id: int,
++    actor_user,
++    target_uid: int,
++    state: FSMContext,
++    edited_field: str | None = None,
++) -> None:
++    """Завершает шаг редактирования или мастера создания анкеты и выводит карточку."""
++    actor_id = actor_user.id
++    await state.clear()
++
++    c = await db.get_character(target_uid)
++    if not c:
++        await bot.send_message(chat_id, "⚠️ Анкета не найдена. Напиши /newchar, чтобы создать её.")
++        return
++
++    # Если правил администратор чужую анкету — пишем в лог модерации и обновляем карточки
++    if actor_id in config.ADMIN_IDS and actor_id != target_uid and edited_field:
++        await db.log_moderation(target_uid, actor_id, "edited", edited_field)
++        await ui.refresh_cards(bot, c)
++    elif edited_field in ui.MECHANICAL and c.get("status") == "approved":
++        await db.update_character(target_uid, status="pending", reject_reason=None)
++        c = await db.get_character(target_uid)
++        await ui.notify_admins(bot, c, f"Анкета изменена и ждёт повторной проверки: {c['name']}")
++
++    await bot.send_message(chat_id, "✅ Анкета успешно сохранена!")
++    await ui.send_card(bot, chat_id, c, actor_id)
++
++
++# --------------------------------------------------------------------------
++# Команды: /cancel, /done, /skip, /start, /me, /newchar
++# ВНИМАНИЕ: без StateFilter, чтобы команды перехватывались в ЛЮБОМ состоянии FSM!
++# --------------------------------------------------------------------------
++
++@router.message(Command("cancel"))
++async def cmd_cancel(message: Message, state: FSMContext, bot: Bot) -> None:
++    cur = await state.get_state()
++    data = await state.get_data()
++    await state.clear()
++
+     uid = message.from_user.id
+-    args = (message.text or "").partition(" ")[2].strip()
+-    ref_note = ""
+-    if args.startswith("ref_"):
+-        raw_ref = args[4:].strip()
+-        if raw_ref.isdigit():
+-            ref_id = int(raw_ref)
+-            ok = await db.apply_referral(uid, ref_id)
+-            if ok:
+-                ref_note = "\n\n🎁 <b>Бонус Клуба Таро:</b> ты пришёл по приглашению Потустороннего и получил <b>+5 дополнительных ходов Духовности</b>!"
+-                try:
+-                    await bot.send_message(
+-                        ref_id,
+-                        "🃏 <b>Новый участник Клуба Таро!</b>\n"
+-                        "По твоей тайной ссылке в мир ступил новый Потусторонний.\n"
+-                        "Тебе начислено: <b>+10 Ходов Духовности ⚡</b> и <b>+1 Печать Судьбы 🎲</b>!",
+-                    )
+-                except Exception:
+-                    pass
+-
+-    rows = []
+-    if config.WEBAPP_URL.startswith("https://"):
+-        from aiogram.types import WebAppInfo
+-        rows.append([InlineKeyboardButton(text="🔮 Открыть Веб-Терминал (Mini App)", web_app=WebAppInfo(url=config.WEBAPP_URL))])
+-    rows += [
+-        [ui.btn("🔮 Создать персонажа (/build)", "st:go_build")],
+-        [ui.btn("🌫 Играть сюжет с ИИ-Мастером (/story)", "st:resume")],
+-        [ui.btn("🃏 Пригласить друга (+10⚡ и +1🎲)", "shop:ref")],
+-        [ui.btn("🇷🇺 Русский", "lang:set:ru"), ui.btn("🇬🇧 English", "lang:set:en")],
+-    ]
+-    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+-    await message.answer(WELCOME + ref_note, reply_markup=kb)
+-
+-
+-@router.message(Command("cancel"))
+-async def cmd_cancel(message: Message, state: FSMContext):
+-    if await state.get_state() is None:
+-        await message.answer("Отменять нечего.")
+-        return
+-    await state.clear()
+-    await message.answer("Отменено.")
+-
+-
+-@router.message(Command("me"))
+-async def cmd_me(message: Message, bot: Bot):
+-    c = await db.get_character(message.from_user.id)
+-    if c is None or (c["status"] == "draft" and not c.get("pathway")):
+-        if is_admin(message.from_user.id):
++    old_status = data.get("old_status")
++    # Если анкета была ранее одобрена или отправлена, восстанавливаем статус,
++    # чтобы случайный ввод /newchar не сбрасывал готовую анкету в draft
++    if old_status and old_status in ("approved", "pending"):
++        await db.update_character(uid, status=old_status)
++    else:
++        # Резервная проверка по логам модерации
++        try:
++            mod_row = await db._q(
++                "SELECT action FROM moderation_log WHERE user_id=? ORDER BY id DESC LIMIT 1",
++                (uid,),
++                "one",
++            )
++            if mod_row and mod_row.get("action") == "approved":
++                await db.update_character(uid, status="approved")
++        except Exception:
++            pass
++
++    if cur:
++        await message.answer("🚫 Действие отменено.")
++        c = await db.get_character(uid)
++        if c and (c.get("name") or c.get("bio")):
++            await ui.send_card(bot, message.chat.id, c, uid)
++    else:
++        c = await db.get_character(uid)
++        if c and (c.get("name") or c.get("bio")):
++            await message.answer("Активного ввода не было. Вот твоя анкета:")
++            await ui.send_card(bot, message.chat.id, c, uid)
++        else:
++            await message.answer("Сейчас нет активного ввода.")
++
++
++@router.message(Command("done", "skip"))
++async def cmd_done(message: Message, state: FSMContext, bot: Bot) -> None:
++    cur = await state.get_state()
++    data = await state.get_data()
++    uid = message.from_user.id
++    target_uid = int(data.get("target_uid") or uid)
++    mode = data.get("mode", "wizard")
++
++    # 1. Если игрок завершает ввод текста анкеты (bio)
++    if cur == ProfileState.bio.state or (cur and cur.endswith(":bio")):
++        chunks: list[str] = data.get("bio_chunks") or []
++        full_bio = "\n\n".join(chunks).strip()
++
++        if not full_bio:
++            c = await db.get_character(target_uid)
++            full_bio = (c.get("bio") or "").strip() if c else ""
++
++        val, err = ui.parse_field("bio", full_bio)
++        if err:
+             await message.answer(
+-                "У тебя пока нет готовой анкеты.\n"
+-                "Создать: /newchar\n"
+-                "Быстрый сброс тестового персонажа: /reset_me"
++                f"⚠️ {err}\nОтправь текст анкеты обычным сообщением, а затем напиши /done."
++            )
++            return
++
++        await db.update_character(target_uid, bio=val)
++
++        if mode == "wizard":
++            await state.set_state(ProfileState.photo_id)
++            await message.answer(
++                "✅ Текст анкеты сохранён!\n\n"
++                f"{ui.PROMPTS['photo_id']}\n"
++                "Или нажми кнопку ниже (либо напиши /done), чтобы сохранить без фото.",
++                reply_markup=_done_kb("photo"),
+             )
+         else:
+-            await message.answer("У тебя пока нет готовой анкеты. Создать: /newchar")
+-        return
+-    await ui.send_card(bot, message.chat.id, c, message.from_user.id)
+-
+-
+-# ---------------------------------------------------------------------------
+-# Редактирование анкеты (игрок — свою, админ — любую)
+-# ---------------------------------------------------------------------------
+-
+-@router.callback_query(F.data.startswith("em:"))
+-async def cb_edit_menu(cb: CallbackQuery):
+-    parts = cb.data.split(":")
+-    if len(parts) < 2 or not parts[1].isdigit():
+-        await cb.answer()
+-        return
+-    uid = int(parts[1])
+-    if not allowed(cb.from_user.id, uid):
+-        await cb.answer("Это не твоя анкета", show_alert=True)
+-        return
+-    await cb.message.edit_reply_markup(reply_markup=ui.edit_menu_kb(uid))
+-    await cb.answer()
+-
+-
+-@router.callback_query(F.data.startswith("vw:"))
+-async def cb_view_back(cb: CallbackQuery):
+-    parts = cb.data.split(":")
+-    if len(parts) < 2 or not parts[1].isdigit():
+-        await cb.answer()
+-        return
+-    uid = int(parts[1])
+-    if not allowed(cb.from_user.id, uid):
+-        await cb.answer("Это не твоя анкета", show_alert=True)
+-        return
++            await _finish_Editing_or_wizard(
++                bot, message.chat.id, message.from_user, target_uid, state, edited_field="bio"
++            )
++        return
++
++    # 2. Если игрок пропускает или завершает шаг с фото (photo_id)
++    if cur == ProfileState.photo_id.state or (cur and cur.endswith(":photo_id")):
++        await _finish_Editing_or_wizard(
++            bot, message.chat.id, message.from_user, target_uid, state, edited_field="photo_id"
++        )
++        return
++
++    # 3. Если вызвали /done на шаге имени
++    if cur == ProfileState.name.state or (cur and cur.endswith(":name")):
++        await message.answer("⚠️ Сначала введи имя персонажа (от 2 до 40 символов).")
++        return
++
++    # 4. Если состояние уже сброшено или не активно — показываем текущую анкету
++    await state.clear()
+     c = await db.get_character(uid)
+-    if c is None:
+-        await cb.answer("Анкета не найдена", show_alert=True)
+-        return
+-    await cb.message.edit_reply_markup(reply_markup=ui.card_kb(c, cb.from_user.id))
+-    await cb.answer()
+-
+-
+-@router.callback_query(F.data.startswith("ed:"))
+-async def cb_edit_field(cb: CallbackQuery, state: FSMContext):
+-    parts = cb.data.split(":")
+-    if len(parts) != 3 or not parts[1].isdigit():
+-        await cb.answer()
+-        return
+-    uid = int(parts[1])
+-    field = parts[2]
+-    if not allowed(cb.from_user.id, uid) or field not in FIELDS:
+-        await cb.answer("Нет доступа", show_alert=True)
+-        return
+-    if field in MECHANICAL and not is_admin(cb.from_user.id):
+-        await cb.answer(
+-            "Механические параметры (характеристики и владения) задаются при создании персонажа или изменяются администратором.",
+-            show_alert=True,
+-        )
+-        return
++    if c:
++        await message.answer("✅ Анкета сохранена. Вот твоя карточка:")
++        await ui.send_card(bot, message.chat.id, c, uid)
++    else:
++        await message.answer("У тебя ещё нет анкеты. Напиши /newchar, чтобы создать её.")
++
++
++@router.message(Command("start"))
++async def cmd_start(message: Message, bot: Bot) -> None:
++    uid = message.from_user.id
+     c = await db.get_character(uid)
+-    if c is None:
+-        await cb.answer("Анкета не найдена", show_alert=True)
+-        return
+-    await state.set_state(Form.edit)
+-    await state.set_data({"uid": uid, "field": field})
+-    prompt = ui.PROMPTS[field]
+-    if field == "bio":
+-        prompt += (
+-            "\n\nЕсли текст не влезает в одно сообщение — шли частями: я их склею. "
+-            "Когда закончишь, нажми «✅ Готово» или отправь /done."
+-        )
+-    await cb.message.answer(prompt + "\n\n/cancel — отмена")
+-    await cb.answer()
+-
+-
+-async def apply_changes(bot: Bot, editor_id: int, c: dict, **changes) -> dict:
+-    """Сохраняет правку. Если игрок меняет механику — анкета уходит на повторную проверку."""
+-    recheck = (
+-        not is_admin(editor_id)
+-        and c["status"] in ("approved", "rejected")
+-        and bool(MECHANICAL & changes.keys())
+-    )
+-    if recheck:
+-        changes["status"] = "pending"
+-        changes["reject_reason"] = None
+-
+-    if "stats" in changes and c.get("pathway") and c.get("faction"):
+-        new_stats = {k: int(v) for k, v in changes["stats"].items()}
+-        changes["stats"] = new_stats
+-
+-        con_mod = rules.ability_mod(new_stats.get("con", 10))
+-        dex_mod = rules.ability_mod(new_stats.get("dex", 10))
+-        feats = list(c.get("feats") or [])
+-        max_hp = rules.sequence_max_hp(
+-            c["pathway"],
+-            int(c["sequence"]),
+-            con_mod,
+-            feats,
+-            faction_perk=c.get("faction_perk", ""),
+-            pathway_choices=c.get("pathway_choices"),
+-        )
+-        old_hp = int(c.get("hp") or 0)
+-        old_max = int(c.get("max_hp") or max_hp)
+-        changes["max_hp"] = max_hp
+-        changes["hp"] = min(max_hp, old_hp + max(0, max_hp - old_max))
+-        changes["ac"] = 10 + dex_mod
+-        changes["lair_uses"] = h_perks.reset_combat_uses({**c, "stats": new_stats})
+-
+-    await db.update_character(c["user_id"], **changes)
+-    c = await db.get_character(c["user_id"])
+-    if recheck:
+-        # Анкета ушла на повторную проверку — прежние голоса админов больше не действуют
+-        await db.drop_card_messages(c["user_id"])
+-        await ui.notify_admins(bot, c, "Игрок изменил анкету — нужна проверка")
+-    return c
+-
+-
+-async def finish_edit(message: Message, state: FSMContext, bot: Bot, **changes):
+-    data = await state.get_data()
+-    uid = data.get("uid")
+-    await state.clear()
+-    if uid is None:
+-        await message.answer("Сессия редактирования истекла. Открой /me заново.")
+-        return
+-    c = await db.get_character(int(uid))
+-    if c is None:
+-        await message.answer("Анкета не найдена (возможно, её удалили).")
+-        return
+-    c = await apply_changes(bot, message.from_user.id, c, **changes)
+-    await message.answer("Сохранено ✔️")
+-    await ui.send_card(bot, message.chat.id, c, message.from_user.id)
+-
+-
+-@router.message(Form.edit, F.text & ~F.text.startswith("/"))
+-async def edit_text(message: Message, state: FSMContext, bot: Bot):
+-    data = await state.get_data()
+-    field = data.get("field")
+-    if not field:
+-        await state.clear()
+-        await message.answer("Сессия редактирования истекла. Открой /me заново.")
+-        return
+-    if field == "photo_id":
+-        await message.answer("Пришли изображение как фото или нажми /cancel.")
+-        return
+-    if field == "bio":
+-        # Многочастный ввод: копим части, завершение — кнопкой или командой /done
+-        raw = (message.text or "").strip()
+-        if raw.lower() == "/done":
+-            parts = data.get("edit_bio_parts") or []
+-            raw_join = "\n\n".join(p for p in parts)
+-            if not raw_join:
+-                await message.answer("Ничего не накоплено. Пришли текст или /cancel.")
+-                return
+-            value, err = ui.parse_field("bio", raw_join)
+-            if err:
+-                await message.answer(err)
+-                return
+-            await finish_edit(message, state, bot, bio=value)
++    if c and (c.get("name") or c.get("bio")):
++        await message.answer("С возвращением! Вот твоя текущая анкета:")
++        await ui.send_card(bot, message.chat.id, c, uid)
++    else:
++        await message.answer(
++            "👋 Привет! Для начала игры создай персонажа:\n"
++            "• /newchar — заполнить имя, анкету и фото\n"
++            "• /build — выбрать фракцию, Путь и характеристики\n"
++            "• /me — посмотреть свою анкету"
++        )
++
++
++@router.message(Command("me"))
++async def cmd_me(message: Message, bot: Bot) -> None:
++    uid = message.from_user.id
++    c = await db.get_character(uid)
++    if not c:
++        await message.answer("У тебя пока нет анкеты. Создай её командой /newchar или /build.")
++        return
++    if message.from_user.username and c.get("username") != message.from_user.username:
++        await db.update_character(uid, username=message.from_user.username)
++        c["username"] = message.from_user.username
++    await ui.send_card(bot, message.chat.id, c, uid)
++
++
++@router.message(Command("newchar"))
++async def cmd_newchar(message: Message, state: FSMContext) -> None:
++    uid = message.from_user.id
++    if await db.is_in_combat(uid):
++        await message.answer("⚔️ Нельзя пересоздавать анкету во время активного боя!")
++        return
++
++    existing = await db.get_character(uid)
++    old_status = existing.get("status") if existing else None
++
++    # ВАЖНО: не затираем существующую анкету в БД сразу!
++    # Только выставляем FSM-состояние. Если пользователь нажмёт /cancel,
++    # старая анкета останется в неизменном виде.
++    await state.clear()
++    await state.set_state(ProfileState.name)
++    await state.update_data(
++        mode="wizard",
++        target_uid=uid,
++        bio_chunks=[],
++        old_status=old_status,
++    )
++
++    warn = ""
++    if existing and existing.get("name"):
++        warn = (
++            f"\n\n⚠️ <i>У тебя уже есть персонаж <b>«{ui.esc(existing['name'])}»</b>. "
++            "Если нажал случайно — напиши /cancel, и старая анкета останется нетронутой.</i>"
++        )
++
++    await message.answer(
++        f"📝 <b>Шаг 1 из 3 — Имя</b>\n{ui.PROMPTS['name']}{warn}\n\n"
++        "<i>Для отмены в любой момент напиши /cancel.</i>"
++    )
++
++
++# --------------------------------------------------------------------------
++# Инлайн-кнопки завершения и отмены (prof:done, prof:cancel)
++# --------------------------------------------------------------------------
++
++@router.callback_query(F.data == "prof:cancel")
++async def cb_prof_cancel(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
++    data = await state.get_data()
++    await state.clear()
++
++    uid = call.from_user.id
++    old_status = data.get("old_status")
++    if old_status and old_status in ("approved", "pending"):
++        await db.update_character(uid, status=old_status)
++
++    await ui.safe_edit(call.message, "🚫 Ввод отменён.")
++    await call.answer()
++
++    c = await db.get_character(uid)
++    if c and (c.get("name") or c.get("bio")):
++        await ui.send_card(bot, call.message.chat.id, c, uid)
++
++
++@router.callback_query(F.data == "prof:done")
++async def cb_prof_done(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
++    cur = await state.get_state()
++    data = await state.get_data()
++    uid = call.from_user.id
++    target_uid = int(data.get("target_uid") or uid)
++    mode = data.get("mode", "wizard")
++
++    if cur == ProfileState.bio.state or (cur and cur.endswith(":bio")):
++        chunks: list[str] = data.get("bio_chunks") or []
++        full_bio = "\n\n".join(chunks).strip()
++        if not full_bio:
++            c = await db.get_character(target_uid)
++            full_bio = (c.get("bio") or "").strip() if c else ""
++
++        val, err = ui.parse_field("bio", full_bio)
++        if err:
++            await call.answer(err, show_alert=True)
+             return
+-        parts = list(data.get("edit_bio_parts") or [])
+-        parts.append(raw)
+-        total = sum(len(p) for p in parts) + 2 * (len(parts) - 1)
+-        if total > 7000:
+-            parts.pop()
+-            await message.answer(
+-                f"Слишком длинно: суммарно {total} символов, лимит 7000. "
+-                "Эта часть не сохранена — сократи её или отправь /cancel."
+-            )
+-            return
+-        await state.update_data(edit_bio_parts=parts)
+-        left = 7000 - total
+-        if left < 3500:
+-            await message.answer(
+-                f"Принято ({total}/7000). Шли ещё часть, отправь /done — сохранить, или /cancel.",
+-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+-                    InlineKeyboardButton(text="✅ Готово", callback_data="edbio:done"),
+-                ]]),
++
++        await db.update_character(target_uid, bio=val)
++        await call.answer("Текст анкеты сохранён!")
++
++        if mode == "wizard":
++            await state.set_state(ProfileState.photo_id)
++            await ui.safe_edit(
++                call.message,
++                "✅ Текст анкеты сохранён!\n\n"
++                f"{ui.PROMPTS['photo_id']}\n"
++                "Или нажми кнопку ниже (либо напиши /done), чтобы сохранить без фото.",
++                _done_kb("photo"),
+             )
+         else:
+-            await message.answer(
+-                f"Принято ({total}/7000). Шли ещё часть, отправь /done — сохранить, или /cancel."
++            await ui.safe_edit(call.message, "✅ Текст анкеты обновлён.")
++            await _finish_Editing_or_wizard(
++                bot, call.message.chat.id, call.from_user, target_uid, state, edited_field="bio"
+             )
+         return
+-    value, err = ui.parse_field(field, message.text)
++
++    if cur == ProfileState.photo_id.state or (cur and cur.endswith(":photo_id")):
++        await call.answer("Сохранено!")
++        await ui.safe_edit(call.message, "✅ Шаг с изображением завершён.")
++        await _finish_Editing_or_wizard(
++            bot, call.message.chat.id, call.from_user, target_uid, state, edited_field="photo_id"
++        )
++        return
++
++    await state.clear()
++    await call.answer("Готово!")
++    c = await db.get_character(uid)
++    if c:
++        await ui.send_card(bot, call.message.chat.id, c, uid)
++
++
++# --------------------------------------------------------------------------
++# Пошаговый ввод: Имя -> Анкета (bio) -> Фото (photo_id)
++# --------------------------------------------------------------------------
++
++@router.message(ProfileState.name, F.text, ~F.text.startswith("/"))
++async def step_name(message: Message, state: FSMContext, bot: Bot) -> None:
++    val, err = ui.parse_field("name", message.text)
+     if err:
+-        await message.answer(err)
+-        return
+-    await finish_edit(message, state, bot, **{field: value})
+-
+-
+-@router.callback_query(F.data == "edbio:done")
+-async def cb_edit_bio_done(cb: CallbackQuery, state: FSMContext, bot: Bot):
+-    data = await state.get_data()
+-    parts = data.get("edit_bio_parts") or []
+-    raw_join = "\n\n".join(p for p in parts)
+-    if not raw_join:
+-        await cb.answer("Ничего не накоплено. Пришли текст.", show_alert=True)
+-        return
+-    value, err = ui.parse_field("bio", raw_join)
+-    if err:
+-        await cb.answer(err, show_alert=True)
+-        return
+-    if isinstance(cb.message, Message):
+-        await finish_edit(cb.message, state, bot, bio=value)
+-    await cb.answer()
+-
+-
+-@router.message(Form.edit, F.photo)
+-async def edit_photo(message: Message, state: FSMContext, bot: Bot):
+-    data = await state.get_data()
+-    if data.get("field") != "photo_id":
+-        await message.answer("Сейчас нужен текст. Или /cancel.")
+-        return
+-    await finish_edit(message, state, bot, photo_id=message.photo[-1].file_id)
++        await message.answer(f"⚠️ {err}")
++        return
++
++    data = await state.get_data()
++    target_uid = int(data.get("target_uid") or message.from_user.id)
++    mode = data.get("mode", "wizard")
++
++    existing = await db.get_character(target_uid)
++    if not existing:
++        await db.create_draft(target_uid, message.from_user.username)
++
++    # Статус переводится в draft ТОЛЬКО когда пользователь реально ввёл имя
++    await db.update_character(
++        target_uid,
++        name=val,
++        status="draft",
++        username=message.from_user.username,
++        reject_reason=None,
++    )
++
++    if mode == "wizard":
++        await state.set_state(ProfileState.bio)
++        await state.update_data(bio_chunks=[])
++        await message.answer(
++            f"📝 <b>Шаг 2 из 3 — Анкета</b>\n{ui.PROMPTS['bio']}\n\n"
++            "💡 <i>Можешь прислать анкету одним или несколькими сообщениями. "
++            "После отправки текста нажми кнопку «Завершить анкету» или напиши /done.</i>",
++            reply_markup=_done_kb("bio"),
++        )
++    else:
++        await _finish_Editing_or_wizard(
++            bot, message.chat.id, message.from_user, target_uid, state, edited_field="name"
++        )
++
++
++@router.message(ProfileState.bio, F.text, ~F.text.startswith("/"))
++async def step_bio_text(message: Message, state: FSMContext) -> None:
++    data = await state.get_data()
++    target_uid = int(data.get("target_uid") or message.from_user.id)
++    chunks: list[str] = list(data.get("bio_chunks") or [])
++
++    piece = message.text.strip()
++    if not piece:
++        return
++
++    candidate_chunks = [*chunks, piece]
++    combined = "\n\n".join(candidate_chunks)
++
++    if len(combined) > 7000:
++        await message.answer(
++            f"⚠️ Превышен лимит в 7000 символов (сейчас вышло бы {len(combined)}). "
++            "Последний фрагмент не добавлен. Сократи текст или нажми /done для сохранения уже отправленного.",
++            reply_markup=_done_kb("bio"),
++        )
++        return
++
++    await db.update_character(target_uid, bio=combined)
++    await state.update_data(bio_chunks=candidate_chunks)
++
++    await message.answer(
++        f"✅ Фрагмент записан и сохранён в черновик (всего <b>{len(combined)}</b> / 7000 симв.).\n"
++        "• Можешь дослать ещё текст следующим сообщением.\n"
++        "• Если всё готово — напиши /done или нажми кнопку ниже:",
++        reply_markup=_done_kb("bio"),
++    )
++
++
++@router.message(ProfileState.bio, F.photo)
++async def step_bio_photo(message: Message, state: FSMContext, bot: Bot) -> None:
++    data = await state.get_data()
++    target_uid = int(data.get("target_uid") or message.from_user.id)
++    chunks: list[str] = list(data.get("bio_chunks") or [])
++
++    if message.caption:
++        chunks.append(message.caption.strip())
++
++    combined = "\n\n".join(chunks).strip()
++    if combined and len(combined) <= 7000:
++        await db.update_character(target_uid, bio=combined)
++
++    photo_id = message.photo[-1].file_id
++    await db.update_character(target_uid, photo_id=photo_id)
++    await _finish_Editing_or_wizard(
++        bot, message.chat.id, message.from_user, target_uid, state, edited_field="photo_id"
++    )
++
++
++@router.message(ProfileState.photo_id, F.photo)
++async def step_photo(message: Message, state: FSMContext, bot: Bot) -> None:
++    data = await state.get_data()
++    target_uid = int(data.get("target_uid") or message.from_user.id)
++    photo_id = message.photo[-1].file_id
++
++    await db.update_character(target_uid, photo_id=photo_id)
++    await _finish_Editing_or_wizard(
++        bot, message.chat.id, message.from_user, target_uid, state, edited_field="photo_id"
++    )
++
++
++@router.message(ProfileState.photo_id)
++async def step_photo_invalid(message: Message) -> None:
++    await message.answer(
++        "🖼 Пришли изображение именно <b>как фото</b> (не файлом), "
++        "либо нажми кнопку ниже (или напиши /done), чтобы сохранить анкету без картинки.",
++        reply_markup=_done_kb("photo"),
++    )
++
++
++# --------------------------------------------------------------------------
++# Коллбэки карточки анкеты: em (меню правок), ed (поле), vw (назад), rs (на проверку)
++# --------------------------------------------------------------------------
++
++@router.callback_query(F.data.startswith("em:"))
++async def cb_edit_menu(call: CallbackQuery) -> None:
++    target_uid = int(call.data.split(":")[1])
++    if not _can_edit(call.from_user.id, target_uid):
++        await call.answer("Ты не можешь редактировать чужую анкету.", show_alert=True)
++        return
++    c = await db.get_character(target_uid)
++    if not c:
++        await call.answer("Анкета не найдена.", show_alert=True)
++        return
++    await ui.safe_edit(
++        call.message,
++        f"✏️ <b>Редактирование: {ui.esc(c['name'] or 'Без имени')}</b>\nВыбери раздел для изменения:",
++        ui.edit_menu_kb(target_uid),
++    )
++    await call.answer()
++
++
++@router.callback_query(F.data.startswith("vw:"))
++async def cb_view_card(call: CallbackQuery, state: FSMContext) -> None:
++    target_uid = int(call.data.split(":")[1])
++    await state.clear()
++    c = await db.get_character(target_uid)
++    if not c:
++        await call.answer("Анкета не найдена.", show_alert=True)
++        return
++    is_admin = call.from_user.id in config.ADMIN_IDS
++    await ui.safe_edit(call.message, ui.card_text(c, admin=is_admin), ui.card_kb(c, call.from_user.id))
++    await call.answer()
++
++
++@router.callback_query(F.data.startswith("ed:"))
++async def cb_edit_field(call: CallbackQuery, state: FSMContext) -> None:
++    parts = call.data.split(":")
++    target_uid = int(parts[1])
++    field = parts[2]
++
++    if not _can_edit(call.from_user.id, target_uid):
++        await call.answer("Нет прав для редактирования.", show_alert=True)
++        return
++
++    if target_uid == call.from_user.id and await db.is_in_combat(target_uid):
++        await call.answer("Нельзя менять анкету во время боя!", show_alert=True)
++        return
++
++    await state.clear()
++    if field == "name":
++        await state.set_state(ProfileState.name)
++        await state.update_data(mode="edit", target_uid=target_uid)
++        await call.message.answer(f"✏️ <b>Новое имя</b>\n{ui.PROMPTS['name']}\n<i>Для отмены: /cancel</i>")
++    elif field == "bio":
++        await state.set_state(ProfileState.bio)
++        await state.update_data(mode="edit", target_uid=target_uid, bio_chunks=[])
++        await call.message.answer(
++            f"✏️ <b>Новая анкета</b>\n{ui.PROMPTS['bio']}\n\n"
++            "💡 <i>Отправь текст (можно несколькими сообщениями), затем нажми кнопку ниже или напиши /done.</i>",
++            reply_markup=_done_kb("bio"),
++        )
++    elif field == "photo_id":
++        await state.set_state(ProfileState.photo_id)
++        await state.update_data(mode="edit", target_uid=target_uid)
++        await call.message.answer(
++            f"✏️ <b>Новое изображение</b>\n{ui.PROMPTS['photo_id']}",
++            reply_markup=_done_kb("photo"),
++        )
++    else:
++        await call.answer("Неизвестное поле.", show_alert=True)
++        return
++
++    await call.answer()
+ 
+ 
+ @router.callback_query(F.data.startswith("rs:"))
+-async def cb_resubmit(cb: CallbackQuery, bot: Bot):
+-    parts = cb.data.split(":")
+-    if len(parts) < 2 or not parts[1].isdigit():
+-        await cb.answer()
+-        return
+-    uid = int(parts[1])
+-    if cb.from_user.id != uid:
+-        await cb.answer("Это не твоя анкета", show_alert=True)
+-        return
+-    c = await db.get_character(uid)
+-    if c is None or c["status"] not in ("draft", "rejected"):
+-        await cb.answer("Нечего отправлять", show_alert=True)
++async def cb_resubmit(call: CallbackQuery, bot: Bot) -> None:
++    target_uid = int(call.data.split(":")[1])
++    if call.from_user.id != target_uid and call.from_user.id not in config.ADMIN_IDS:
++        await call.answer("Это не твоя анкета.", show_alert=True)
++        return
++
++    c = await db.get_character(target_uid)
++    if not c:
++        await call.answer("Анкета не найдена.", show_alert=True)
++        return
++
++    if not (c.get("name") or "").strip():
++        await call.answer("⚠️ Сначала укажи имя персонажа!", show_alert=True)
+         return
+     if not (c.get("bio") or "").strip():
+-        await cb.answer("Сначала заполни поле «Анкета» (биографию) через ✏️ Изменить!", show_alert=True)
+-        return
+-    await db.update_character(uid, status="pending", reject_reason=None)
+-    await db.drop_card_messages(uid)
+-    c = await db.get_character(uid)
+-    await ui.safe_edit(cb.message, ui.card_text(c, admin=False), ui.card_kb(c, uid))
+-    await ui.notify_admins(bot, c, "Анкета отправлена на проверку")
+-    await cb.answer("Отправлено на проверку ⏳")
++        await call.answer("⚠️ Сначала заполни текст анкеты!", show_alert=True)
++        return
++
++    await db.update_character(target_uid, status="pending", reject_reason=None)
++    await db.drop_card_messages(target_uid)
++    c = await db.get_character(target_uid)
++
++    is_admin = call.from_user.id in config.ADMIN_IDS
++    await ui.safe_edit(call.message, ui.card_text(c, admin=is_admin), ui.card_kb(c, call.from_user.id))
++    await ui.notify_admins(bot, c, f"Анкета отправлена на проверку: {c['name']}")
++    await call.answer("⏳ Анкета отправлена на проверку администраторам!", show_alert=True)

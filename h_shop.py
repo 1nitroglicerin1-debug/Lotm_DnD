@@ -72,14 +72,28 @@ PACKS: dict[str, dict] = {
     "vip_30": {
         "title_ru": "👑 Святилище Серого Тумана (VIP 30 дней)",
         "title_en": "👑 Gray Fog Sanctuary Pass (30 Days)",
-        "desc_ru": "80 ходов КАЖДЫЙ ДЕНЬ, двойная глубина памяти летописи ИИ, +3 Печати Судьбы и полное исцеление!",
-        "desc_en": "80 turns EVERY DAY, double AI chronicle memory depth, +3 Fate Seals & full restoration!",
+        "desc_ru": f"Каждые сутки баланс пополняется до {config.VIP_DAILY_TURNS} ходов (~{config.VIP_DAILY_TURNS * 30} за месяц), двойная глубина памяти летописи ИИ, +3 Печати Судьбы и полное исцеление!",
+        "desc_en": f"Every day your balance refills up to {config.VIP_DAILY_TURNS} turns (~{config.VIP_DAILY_TURNS * 30} per month), 2x AI chronicle memory, +3 Fate Seals & full restoration!",
         "stars": 390,
-        "turns": 80,
+        "turns": config.VIP_START_POOL,
         "fate": 3,
         "heal": True,
         "artifact": False,
         "vip_days": 30,
+        "vip_plan": "vip",
+    },
+    "vip_plus_30": {
+        "title_ru": "👑 Святилище+ (VIP 30 дней, глубокий туман)",
+        "title_en": "👑 Sanctuary+ (30 Days, Deep Fog)",
+        "desc_ru": f"Ежедневно до {config.VIP_PLUS_DAILY_TURNS} ходов (~{config.VIP_PLUS_DAILY_TURNS * 30} за месяц), двойная память летописи, +5 Печатей Судьбы и полное исцеление!",
+        "desc_en": f"Up to {config.VIP_PLUS_DAILY_TURNS} turns every day (~{config.VIP_PLUS_DAILY_TURNS * 30} per month), 2x chronicle memory, +5 Fate Seals & full restoration!",
+        "stars": 590,
+        "turns": config.VIP_PLUS_START_POOL,
+        "fate": 5,
+        "heal": True,
+        "artifact": False,
+        "vip_days": 30,
+        "vip_plan": "plus",
     },
 }
 
@@ -107,7 +121,7 @@ def shop_text(session: dict) -> str:
     is_vip = session.get("is_vip", False)
     vip_until = int(session.get("vip_until") or 0)
     if lang == "en":
-        vip_str = f"👑 <b>ACTIVE</b> (until {time.strftime('%Y-%m-%d', time.gmtime(vip_until))}, 80 turns/day)" if is_vip else f"Standard ({config.FREE_DAILY_TURNS} free turns/day)"
+        vip_str = f"👑 <b>ACTIVE</b> (until {time.strftime('%Y-%m-%d', time.gmtime(vip_until))}, up to {config.VIP_DAILY_TURNS}/day)" if is_vip else f"Standard ({config.FREE_DAILY_TURNS} free turns/day)"
         return (
             "🏛 <b>Sanctuary above the Gray Fog</b>\n\n"
             f"⚡ Spirituality Turns: <b>{turns}</b> | 🎲 Fate Seals: <b>{fate}</b>\n"
@@ -115,12 +129,13 @@ def shop_text(session: dict) -> str:
             "• <b>40 Turns (65 ⭐️)</b> — instant energy refill to continue your story right now.\n"
             "• <b>5 Fate Seals + Full Heal (55 ⭐️)</b> — reroll failed d20 checks on your crazy plans with Advantage (2d20) + restore 100% HP & Sanity.\n"
             "• <b>Relic: Sealed Artifact (110 ⭐️)</b> — claim a powerful Sealed Artifact into your build (+25 turns).\n"
-            "• <b>Sanctuary Pass 30 Days (390 ⭐️)</b>:\n"
-            "  — <b>80 Turns EVERY DAY</b> (auto-refilled daily)\n"
+            f"• <b>Sanctuary Pass 30 Days (390 ⭐️)</b>:\n"
+            f"  — <b>up to {config.VIP_DAILY_TURNS} turns EVERY DAY</b> (auto-refilled daily)\n"
             "  — <b>Expanded AI Chronicle Memory</b> (2x deeper plot & NPC memory)\n"
-            "  — <b>+3 Fate Seals</b> & instant full restoration."
+            "  — <b>+3 Fate Seals</b> & instant full restoration.\n"
+            f"• <b>Sanctuary+ 30 Days (590 ⭐️)</b> — up to <b>{config.VIP_PLUS_DAILY_TURNS} turns EVERY DAY</b>, +5 Fate Seals."
         )
-    vip_str = f"👑 <b>АКТИВЕН</b> (до {time.strftime('%d.%m.%Y', time.gmtime(vip_until))}, 80 ходов/день)" if is_vip else f"Базовый ({config.FREE_DAILY_TURNS} бесплатных ходов каждые сутки)"
+    vip_str = f"👑 <b>АКТИВЕН</b> (до {time.strftime('%d.%m.%Y', time.gmtime(vip_until))}, до {config.VIP_DAILY_TURNS} ходов/сутки)" if is_vip else f"Базовый ({config.FREE_DAILY_TURNS} бесплатных хода каждые сутки)"
     return (
         "🏛 <b>Святилище над Серым Туманом</b>\n\n"
         f"⚡ Ходов Духовности: <b>{turns}</b> | 🎲 Печатей Судьбы: <b>{fate}</b>\n"
@@ -128,10 +143,11 @@ def shop_text(session: dict) -> str:
         "• <b>40 Ходов (65 ⭐️)</b> — мгновенно продолжить сюжет на самом интересном месте.\n"
         "• <b>5 Печатей Судьбы + Исцеление (55 ⭐️)</b> — переброс проваленных проверок d20 с Преимуществом (2d20), когда твой гениальный план сорвался + 100% ОЗ и Рассудка.\n"
         "• <b>Реликвия: Запечатанный Артефакт (110 ⭐️)</b> — выбор редкого Артефакта в свой билд (+25 ходов).\n"
-        "• <b>Святилище Серого Тумана — 30 дней (390 ⭐️)</b>:\n"
-        "  — <b>80 ходов КАЖДЫЙ ДЕНЬ</b> (обновляются каждые сутки)\n"
+        f"• <b>Святилище Серого Тумана — 30 дней (390 ⭐️)</b>:\n"
+        f"  — баланс пополняется <b>до {config.VIP_DAILY_TURNS} ходов КАЖДЫЕ СУТКИ</b>\n"
         "  — <b>Глубокая летопись памяти ИИ</b> (вдвое больше деталей, улик и NPC)\n"
-        "  — <b>+3 Печати Судьбы</b> и полное восстановление."
+        "  — <b>+3 Печати Судьбы</b> и полное восстановление.\n"
+        f"• <b>Святилище+ — 30 дней (590 ⭐️)</b> — до <b>{config.VIP_PLUS_DAILY_TURNS} ходов каждые сутки</b> и +5 Печатей."
     )
 
 
@@ -192,7 +208,11 @@ async def on_successful_payment(message: Message):
     if pack["fate"] > 0:
         await db.add_fate_tokens(uid, pack["fate"])
     if pack["vip_days"] > 0:
-        await db.activate_vip(uid, pack["vip_days"])
+        await db.activate_vip(
+            uid, pack["vip_days"],
+            pool=pack.get("turns"),
+            plan=str(pack.get("vip_plan") or "vip"),
+        )
     if pack["heal"]:
         c = await db.get_character(uid)
         if c:
@@ -208,6 +228,10 @@ async def on_successful_payment(message: Message):
         avail = [k for k in ARTIFACT_FEATS if k not in taken] or list(lotm.FEATS.keys())
         rows = [[btn(f"🏺 {lotm.FEATS[k]['name']}", f"shop:art:{k}")] for k in avail if k in lotm.FEATS]
         rows.append([btn("🌫 В сюжет", "st:resume")])
+        # Право на выбор артефакта выдаётся ТОЛЬКО после оплаты и живёт до момента выбора.
+        # Раньше кнопку shop:art:<key> можно было вызвать из старого сообщения/вручную
+        # и получить любую реликвию бесплатно.
+        await db.update_story_session(uid, pending_artifact=1)
         await message.answer(
             "🏺 <b>Серый Туман открывает хранилище реликвий!</b>\nВыбери Запечатанный Артефакт (или Черту), который навсегда войдёт в твой профиль:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
@@ -231,6 +255,16 @@ async def cb_pick_purchased_artifact(cb: CallbackQuery):
     c = await db.get_character(uid)
     if not c or key not in lotm.FEATS:
         await cb.answer("Сначала создай персонажа (/build)", show_alert=True)
+        return
+    session = await db.get_story_session(uid)
+    # АНТИ-ЭКСПЛОЙТ: выбор реликвии разрешён только при оплаченном праве (pending_artifact).
+    if not int(session.get("pending_artifact") or 0):
+        await cb.answer("Это хранилище откроется только после подношения Святилищу (110 ⭐️).", show_alert=True)
+        return
+    # Атомарно «сжигаем» право выбора — повторный клик по старой кнопке уже не сработает.
+    spent = await db.update_story_session(uid, pending_artifact=0)
+    if int(spent.get("pending_artifact") or 0):
+        await cb.answer("Право на реликвию уже использовано.", show_alert=True)
         return
     feats = list(c.get("feats") or [])
     if key not in feats:

@@ -91,7 +91,12 @@ async def main() -> None:
     logging.info("Бот запущен: @%s", me.username)
 
     web_app.set_bot(bot)
-    uv_config = uvicorn.Config(web_app.app, host=config.WEB_HOST, port=config.WEB_PORT, log_level="info")
+    # proxy_headers + forwarded_allow_ips: FastAPI доверяет X-Forwarded-Proto от nginx,
+    # иначе за HTTPS-прокси все url_for()/редиректы ведут на http:// (Mixed Content / 307).
+    uv_config = uvicorn.Config(
+        web_app.app, host=config.WEB_HOST, port=config.WEB_PORT, log_level="info",
+        proxy_headers=True, forwarded_allow_ips="*",
+    )
     uv_server = uvicorn.Server(uv_config)
     await asyncio.gather(
         dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types()),
